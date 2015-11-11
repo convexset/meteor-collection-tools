@@ -3,6 +3,7 @@
 /* global Match: true */
 
 /* global CollectionTools: true */
+/* global PackageUtilities: true */
 
 SimpleSchema.extendOptions({
 	subSchemaTags: Match.Optional([String])
@@ -12,12 +13,9 @@ var __ct = function CollectionTools() {};
 
 CollectionTools = new __ct();
 
-var collectionToolsPrototype = {
-	schema: function schema() {
-		return new SimpleSchema({});
-	},
+var baseConstructorPrototype = {
 	_asPlainObject: function _asPlainObject(ignore_off_schema_fields) {
-		var schemaDesc = ignore_off_schema_fields ? this.schema()._schema : {};
+		var schemaDesc = ignore_off_schema_fields ? this.constructor.schemaDescription : {};
 
 		var thisAsObj = {};
 		for (var k in this) {
@@ -87,10 +85,10 @@ var collectionToolsPrototype = {
 		}
 	},
 	getSchemaDescribedTopLevelFields: function getSchemaDescribedTopLevelFields() {
-		var schemaDesc = this.schema()._schema;
+		var schemaDesc = this.constructor.schemaDescription;
 		var o = {};
 		for (var k in schemaDesc) {
-			if (schemaDesc.hasOwnProperty(k)) {
+			if (schemaDesc.hasOwnProperty(k) && (k === k.split('.')[0])) {
 				o[k] = this[k];
 			}
 		}
@@ -98,17 +96,17 @@ var collectionToolsPrototype = {
 	},
 };
 
-PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', function protoLink(options) {
+PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function build(options) {
 
 	options = PackageUtilities.updateDefaultOptionsWithInput({
 		collectionName: "",
 		setRestrictiveAllowDenyDefaults: true,
 		schema: {},
-		extension: {},
+		prototypeExtension: {},
 		constructorExtension: {},
 		transform: x => x,
 		globalAuthFunction: () => true,
-		methodPrefix: "",
+		methodPrefix: 'collections/',
 	}, options);
 	if (options.collectionName === "") {
 		options.collectionName = null;
@@ -119,31 +117,83 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 		options.methodPrefix = 'collections/' + _cn + '/';
 	}
 
+
+	////////////////////////////////////////////////////////////
+	// Basic Constructor
+	////////////////////////////////////////////////////////////
 	var ConstructorFunction = _.extend(function(doc) {
 		_.extend(this, options.transform(doc));
 	}, options.constructorExtension);
-	ConstructorFunction.prototype = _.extend(Object.create(collectionToolsPrototype), {
+
+
+	////////////////////////////////////////////////////////////
+	// The Prototype
+	////////////////////////////////////////////////////////////
+	ConstructorFunction.prototype = _.extend(Object.create(baseConstructorPrototype), {
 		constructor: ConstructorFunction,
-	}, {
-		schema: function schema() {
-			return new SimpleSchema(options.schema);
-		}
-	}, options.extension || {});
+	}, options.prototypeExtension);
+
+
+	////////////////////////////////////////////////////////////
+	// The Collection
+	////////////////////////////////////////////////////////////
 	var collection = new Mongo.Collection(options.collectionName, {
 		transform: function(doc) {
 			return new ConstructorFunction(doc);
 		}
 	});
+	PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'collection', collection);
+	if (!!options.setRestrictiveAllowDenyDefaults) {
+		collection.allow({
+			insert: () => false,
+			update: () => false,
+			remove: () => false
+		});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getObjectWithDefaultValues', function getObjectWithDefaultValues(prefix, document) {
+		collection.deny({
+			insert: () => true,
+			update: () => true,
+			remove: () => true
+		});
+	}
+
+
+	////////////////////////////////////////////////////////////
+	// Basic Schema Stuff
+	////////////////////////////////////////////////////////////
+	PackageUtilities.addPropertyGetter(ConstructorFunction, 'schema', function schema() {
+		return new SimpleSchema(options.schema);
+	});
+	PackageUtilities.addPropertyGetter(ConstructorFunction, 'schemaDescription', function getSchemaDescription() {
+		return this.schema._schema;
+	});
+	PackageUtilities.addPropertyGetter(ConstructorFunction, '_schemaDescription', function _getSchemaDescription() {
+		return _.object(_.map(this.schemaDescription, function(v, k) {
+			var kk = k;
+			while (kk.indexOf('$') !== -1) {
+				kk = kk.replace('$', '*');
+			}
+			return [kk, v];
+		}));
+	});
+
+
+	////////////////////////////////////////////////////////////
+	// More Schema Stuff
+	//  - default object
+	//  - schema modification
+	//  - generate "checkable" (and "introspectable") schema
+	////////////////////////////////////////////////////////////
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getObjectWithDefaultValues', function getObjectWithDefaultValues(prefix) {
 		var obj = {};
 		if (!prefix) {
 			prefix = "";
 		}
 
+		// create schema limited to the prefix
 		var schemaDesc = _.object(
 			_.map(
-				this.prototype.schema()._schema, (v, k) => [k, v]
+				this.schemaDescription, (v, k) => [k, v]
 			)
 			.filter(x => x[0].substr(0, prefix.length) === prefix)
 			.map(x => [x[0].substr(prefix.length), x[1]])
@@ -155,33 +205,16 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 				if (typeof item.defaultValue === "undefined") {
 					throw new Meteor.Error('default-value-not-found', key);
 				}
-				obj[key] = (item.defaultValue instanceof Function) ? item.defaultValue.call(document) : item.defaultValue;
+				obj[key] = (item.defaultValue instanceof Function) ? item.defaultValue() : item.defaultValue;
 			}
 		});
 		return (prefix === "") ? new ConstructorFunction(obj) : obj;
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getSchema', function getSchema() {
-		return this.prototype.schema();
-	});
-
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getSchemaDescription', function getSchemaDescription() {
-		return this.prototype.schema()._schema;
-	});
-
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, '_getSchemaDescription', function _getSchemaDescription() {
-		return _.object(_.map(this.prototype.schema()._schema, function(v, k) {
-			var kk = k;
-			while (kk.indexOf('$') !== -1) {
-				kk = kk.replace('$', '*');
-			}
-			return [kk, v];
-		}));
-	});
 
 	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getModifiedSchema', function getModifiedSchema(altSchemaElements, tag) {
 		var k;
-		var schemaDesc = this.prototype.schema()._schema;
+		var schemaDesc = this.schema._schema;
 		var selectedSchemaDesc = {};
 
 		if (typeof altSchemaElements === "undefined") {
@@ -208,9 +241,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 		return new SimpleSchema(selectedSchemaDesc);
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getIntrospectableSchemas', function getIntrospectableSchemas(prefix) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getCheckableSchema', function getCheckableSchema(prefix) {
 		// Gets checkable and dig-in-able schemas
-		var schemaDesc = this.getSchemaDescription();
+		var schemaDesc = this.schemaDescription;
 		if (typeof prefix === "undefined") {
 			prefix = "";
 		}
@@ -316,24 +349,11 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 		return castObj.validate(false, altSchemaElements, tag); // should be no problem passing a false there
 	});
 
-	PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'collection', collection);
-	if (!!options.setRestrictiveAllowDenyDefaults) {
-		collection.allow({
-			insert: () => false,
-			update: () => false,
-			remove: () => false
-		});
 
-		collection.deny({
-			insert: () => true,
-			update: () => true,
-			remove: () => true
-		});
-	}
 
 	var pubs = {};
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'publications', pubs);
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makePublication', function(pubName, _options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makePublication', function makePublication(pubName, _options) {
 		if (!_options) {
 			_options = {};
 		}
@@ -367,9 +387,11 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 	var updateMethods = {};
 	var removalMethods = {};
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'allMethods', allMethods);
+	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'addMethods', removalMethods);
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'updateMethods', updateMethods);
+	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'removalMethods', removalMethods);
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_add', function(_options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_add', function makeMethod_add(_options) {
 		if (!_options) {
 			_options = {};
 		}
@@ -395,7 +417,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 			throw new Meteor.Error('method-already-exists', methodName);
 		}
 
-		var schema = ConstructorFunction.getIntrospectableSchemas();
+		var schema = ConstructorFunction.getCheckableSchema();
 		if ((_options.field !== '') && (!(schema[_options.field] instanceof Array))) {
 			throw new Meteor.Error('not-document-or-top-level-array', _options.field);
 		}
@@ -436,7 +458,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 								[_options.field, subDoc]
 							])
 						});
-						_options.finishers.forEach(function (fn) {
+						_options.finishers.forEach(function(fn) {
 							if (fn instanceof Function) {
 								fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 							}
@@ -457,7 +479,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 								[_options.field, subDoc]
 							])
 						});
-						_options.finishers.forEach(function (fn) {
+						_options.finishers.forEach(function(fn) {
 							if (fn instanceof Function) {
 								fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 							}
@@ -484,7 +506,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 		return _options.entryName;
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_remove', function(_options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_remove', function makeMethod_remove(_options) {
 		if (!_options) {
 			_options = {};
 		}
@@ -516,7 +538,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 				this.unblock();
 				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
 					collection.remove(id);
-					_options.finishers.forEach(function (fn) {
+					_options.finishers.forEach(function(fn) {
 						if (fn instanceof Function) {
 							fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 						}
@@ -525,7 +547,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 					throw new Meteor.Error('unauthorized');
 				}
 			};
-		} else if (ConstructorFunction.getIntrospectableSchemas()[_options.field] instanceof Array) {
+		} else if (ConstructorFunction.getCheckableSchema()[_options.field] instanceof Array) {
 			method = function(id, idx) {
 				check(id, String);
 				check(idx, Match.isPositiveInteger);
@@ -547,7 +569,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 							});
 						}
 					}
-					_options.finishers.forEach(function (fn) {
+					_options.finishers.forEach(function(fn) {
 						if (fn instanceof Function) {
 							fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 						}
@@ -587,7 +609,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 		return _options.entryName;
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethods_updater', function(_options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethods_updater', function makeMethods_updater(_options) {
 		if (!_options) {
 			_options = {};
 		}
@@ -635,7 +657,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 			};
 			if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
 				var ret = collection.update(id, setter);
-				_options.finishers.forEach(function (fn) {
+				_options.finishers.forEach(function(fn) {
 					if (fn instanceof Function) {
 						fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 					}
@@ -660,7 +682,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 		return methodName;
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeGenericMethod_updaters', function(_options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeGenericMethod_updaters', function makeGenericMethod_updaters(_options) {
 		if (!_options) {
 			_options = {};
 		}
@@ -669,13 +691,13 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'protoLink', func
 			serverOnly: false,
 			additionalAuthFunction: () => true,
 			finishers: [],
-	}, _options);
+		}, _options);
 
-		var _schemaDesc = ConstructorFunction._getSchemaDescription();
+		var _schemaDesc = ConstructorFunction._schemaDescription;
 		_.forEach(_schemaDesc, function(v, k) {
 			ConstructorFunction.makeMethods_updater({
 				field: k,
-				type: ConstructorFunction.getIntrospectableSchemas(k),
+				type: ConstructorFunction.getCheckableSchema(k),
 				entryPrefix: _options.entryPrefix,
 				serverOnly: _options.serverOnly,
 				additionalAuthFunction: _options.additionalAuthFunction,

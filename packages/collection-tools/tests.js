@@ -1,5 +1,4 @@
 /* global CollectionTools: true */
-/* global SimpleSchema: true */
 /* global Tinytest: true */
 
 /*
@@ -24,22 +23,17 @@ test.ok(doc)
 test.fail(doc)
 */
 
-var Thing = function(document) {
-	_.extend(this, document);
-};
-CollectionTools.protoLink(Thing, null, {
-	schema: function schema() {
-		return new SimpleSchema({
-			name: {
-				type: String,
-				subSchemaTags: ['name-only'],
-				defaultValue: "name"
-			},
-			num: {
-				type: Number,
-				defaultValue: 42
-			},
-		});
+var Thing = CollectionTools.build({
+	schema: {
+		name: {
+			type: String,
+			subSchemaTags: ['name-only'],
+			defaultValue: "name"
+		},
+		num: {
+			type: Number,
+			defaultValue: 42
+		},
 	}
 });
 
@@ -146,9 +140,9 @@ Tinytest.add("[CollectionTools] constructor.getObjectWithDefaultValues", functio
 	test.equal(num_keys, 2, "num_keys");
 });
 
-Tinytest.add("[CollectionTools] constructor.getModifiedSchema match with constructor.getSchema (use ._schema and compare keys and fields, again by key)", function(test) {
+Tinytest.add("[CollectionTools] constructor.getModifiedSchema match with constructor.schemaDescription (and compare schema keys and fields)", function(test) {
 	var modSchema = Thing.getModifiedSchema()._schema;
-	var schemaKeys = getObjKeys(Thing.prototype.schema()._schema);
+	var schemaKeys = getObjKeys(Thing.schemaDescription);
 	test.isTrue(objKeyMatch(modSchema, schemaKeys), "num_keys");
 });
 
@@ -191,7 +185,11 @@ Tinytest.add("[CollectionTools] constructor.filterWithTopLevelSchema with functi
 		},
 		xxx: 0
 	};
-	var ret_callFn = Thing.filterWithTopLevelSchema(obj, true, {num: {type: Boolean}});
+	var ret_callFn = Thing.filterWithTopLevelSchema(obj, true, {
+		num: {
+			type: Boolean
+		}
+	});
 	test.equal(ret_callFn.selectedSchema._schema.num.type, Boolean, "ret_callFn.selectedSchema._schema.num.type === Boolean (after alt schema)");
 });
 
@@ -203,7 +201,11 @@ Tinytest.add("[CollectionTools] constructor.filterWithTopLevelSchema with functi
 		},
 		xxx: 0
 	};
-	var ret_callFn = Thing.filterWithTopLevelSchema(obj, true, {name: {type: Boolean}}, 'name-only');
+	var ret_callFn = Thing.filterWithTopLevelSchema(obj, true, {
+		name: {
+			type: Boolean
+		}
+	}, 'name-only');
 	test.equal(ret_callFn.selectedSchema._schema.name.type, Boolean, "ret_callFn.selectedSchema._schema.name.type === Boolean (after alt schema)");
 	test.isTrue(objKeyMatch(ret_callFn.selectedSchema._schema, ['name']), "ret_callFn.selectedSchema._schema keys: name");
 });
