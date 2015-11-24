@@ -9,16 +9,18 @@ Package.describe({
 
 Package.onUse(function(api) {
 	api.versionsFrom('1.2.0.2');
+
 	api.use(
 		[
 			'ecmascript', 'underscore', 'check', 'ejson', 'mongo',
 			'aldeed:simple-schema@1.3.3',
-			'convexset:match-extensions@0.1.0', 'convexset:package-utils@0.1.2',
+			'convexset:match-extensions@0.1.1', 'convexset:package-utils@0.1.3',
 		]
 	);
 	api.use([], 'server');
 	api.use([], 'client');
-	api.addFiles(['collection-tools.js', ]);
+
+	api.addFiles(['collection-tools.js']);
 	api.addFiles([], 'server');
 	api.addFiles([], 'client');
 	api.export('CollectionTools');

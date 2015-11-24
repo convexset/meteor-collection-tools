@@ -78,6 +78,7 @@ ConstructorFunction = CollectionTools.build({
  - `schema`
  - `schemaDescription`
  - `_schemaDescription`
+ - `getTypeInfo(fieldSpec)`
 
  - `getObjectWithDefaultValues(prefix)`
  - `getModifiedSchema(altSchemaElements, tag)`

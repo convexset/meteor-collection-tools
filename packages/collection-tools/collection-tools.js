@@ -14,6 +14,7 @@ var __ct = function CollectionTools() {};
 CollectionTools = new __ct();
 
 var baseConstructorPrototype = {
+	// TODO: make this work all the way into objects; do splitting and such
 	_asPlainObject: function _asPlainObject(ignore_off_schema_fields) {
 		var schemaDesc = ignore_off_schema_fields ? this.constructor.schemaDescription : {};
 
@@ -176,7 +177,27 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			return [kk, v];
 		}));
 	});
-
+	var schemaDesc = ConstructorFunction._schemaDescription;
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getTypeInfo', function getTypeInfo(fieldSpec) {
+		var match;
+		var fieldSpecSplit = fieldSpec.split(".");
+		_.forEach(schemaDesc, function(desc, f) {
+			if (!!match) {
+				return;
+			}
+			var f_split = f.split('.');
+			if (f_split.length !== fieldSpecSplit.length) {
+				return;
+			}
+			for (var k = 0; k < f_split.length; k++) {
+				if ((f_split[k] !== fieldSpecSplit[k]) && (f_split[k] !== "*")) {
+					return;
+				}
+			}
+			match = desc;
+		});
+		return match;
+	});
 
 	////////////////////////////////////////////////////////////
 	// More Schema Stuff
@@ -209,6 +230,18 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			}
 		});
 		return (prefix === "") ? new ConstructorFunction(obj) : obj;
+	});
+
+
+	PackageUtilities.addPropertyGetter(ConstructorFunction, 'defaultValuesDescription', function getDefaultValuesDescription(prefix) {
+		return _.object(
+			_.map(
+				ConstructorFunction._schemaDescription, (v, k) => [k, v.defaultValue]
+			)
+			.filter(
+				x => (x[0][x.length - 1] !== "*") && (typeof x[1] !== "undefined")
+			)
+		);
 	});
 
 
@@ -382,6 +415,38 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		pubs[pubName] = pubs;
 	});
 
+
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makePublication_getById', function makePublication_getId(pubName, _options) {
+		if (!_options) {
+			_options = {};
+		}
+		if (typeof pubs[pubName] !== "undefined") {
+			throw new Meteor.Error('publication-already-exists', pubName);
+		}
+		_options = PackageUtilities.updateDefaultOptionsWithInput({
+			idField: "_id",
+			selectOptions: {},
+			additionalAuthFunction: () => true,
+		}, _options);
+		if (Meteor.isServer) {
+			Meteor.publish(pubName, function(id) {
+				this.unblock();
+				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
+					return collection.find(_.object([
+						[_options.idField, id]
+					]), _options.selectOptions);
+				} else {
+					throw new Meteor.Error('unauthorized');
+				}
+			});
+		}
+		// Add default pubName
+		if (_.map(pubs, x => x).length === 0) {
+			PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'defaultPublication', pubName);
+		}
+		pubs[pubName] = pubs;
+	});
+
 	var allMethods = {};
 	var addMethods = {};
 	var updateMethods = {};
@@ -460,7 +525,11 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 						});
 						_options.finishers.forEach(function(fn) {
 							if (fn instanceof Function) {
-								fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+								fn.apply({
+									context: this,
+									id: id,
+									result: ret
+								}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 							}
 						});
 						return ret;
@@ -481,7 +550,12 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 						});
 						_options.finishers.forEach(function(fn) {
 							if (fn instanceof Function) {
-								fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+								fn.apply({
+									context: this,
+									id: id,
+									subDoc: subDoc,
+									result: ret
+								}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 							}
 						});
 						return ret;
@@ -537,12 +611,17 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				check(id, String);
 				this.unblock();
 				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-					collection.remove(id);
+					var ret = collection.remove(id);
 					_options.finishers.forEach(function(fn) {
 						if (fn instanceof Function) {
-							fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+							fn.apply({
+								context: this,
+								id: id,
+								result: ret
+							}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 						}
 					});
+					return ret;
 				} else {
 					throw new Meteor.Error('unauthorized');
 				}
@@ -558,11 +637,12 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 							[_options.field, 1]
 						])
 					});
+					var ret;
 					if (!!subDoc) {
 						var arr = subDoc[_options.field];
 						if (arr.length > idx) {
 							arr.splice(idx, 1);
-							return collection.update(id, {
+							ret = collection.update(id, {
 								$set: _.object([
 									[_options.field, arr]
 								])
@@ -571,9 +651,15 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 					}
 					_options.finishers.forEach(function(fn) {
 						if (fn instanceof Function) {
-							fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+							fn.apply({
+								context: this,
+								id: id,
+								idx: idx,
+								result: ret
+							}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 						}
 					});
+					return ret;
 				} else {
 					throw new Meteor.Error('unauthorized');
 				}
@@ -583,11 +669,21 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				check(id, String);
 				this.unblock();
 				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-					return collection.update(id, {
+					var ret = collection.update(id, {
 						$unset: _.object([
 							[_options.field, ""]
 						])
 					});
+					_options.finishers.forEach(function(fn) {
+						if (fn instanceof Function) {
+							fn.apply({
+								context: this,
+								id: id,
+								result: ret
+							}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+						}
+					});
+					return ret;
 				} else {
 					throw new Meteor.Error('unauthorized');
 				}
@@ -630,7 +726,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		if (_options.field === "") {
 			throw new Meteor.Error('field-not-specified');
 		}
-		if (typeof allMethods[_options.field] !== "undefined") {
+		if (typeof allMethods[_options.entryName] !== "undefined") {
 			throw new Meteor.Error('method-for-field-already-exists', _options.field + ' for ' + methodName);
 		}
 		if (_.map(allMethods, x => x).indexOf(methodName) !== -1) {
@@ -659,7 +755,13 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				var ret = collection.update(id, setter);
 				_options.finishers.forEach(function(fn) {
 					if (fn instanceof Function) {
-						fn.apply(this, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+						fn.apply({
+							context: this,
+							id: id,
+							value: value,
+							args: args,
+							result: ret
+						}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
 					}
 				});
 				return ret;
@@ -679,6 +781,69 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}
 		allMethods[_options.entryName] = methodName;
 		updateMethods[_options.field] = methodName;
+		return methodName;
+	});
+
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethods_generalUpdater', function makeMethods_generalUpdater(_options) {
+		if (!_options) {
+			_options = {};
+		}
+		_options = _.extend({
+			entryName: 'general-update',
+			serverOnly: false,
+			additionalAuthFunction: () => true,
+			finishers: [],
+		}, _options);
+
+		var methodName = options.methodPrefix + _options.entryName;
+		if (typeof allMethods[_options.entryName] !== "undefined") {
+			throw new Meteor.Error('method-for-field-already-exists', _options.field + ' for ' + methodName);
+		}
+		if (_.map(allMethods, x => x).indexOf(methodName) !== -1) {
+			throw new Meteor.Error('method-already-exists', methodName);
+		}
+
+		var method = function(id, updates) {
+			check(id, String);
+			check(updates, Object);
+			_.forEach(updates, function(v, f) {
+				var typeInfo = ConstructorFunction.getTypeInfo(f);
+				if (!typeInfo) {
+					throw new Meteor.Error('invalid-field', f);
+				}
+				check(v, typeInfo.type);
+			});
+			this.unblock();
+			if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
+				var ret = collection.update(id, {
+					$set: updates
+				});
+				_options.finishers.forEach(function(fn) {
+					if (fn instanceof Function) {
+						fn.apply({
+							context: this,
+							id: id,
+							updates: updates,
+							result: ret
+						}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+					}
+				});
+				return ret;
+			} else {
+				throw new Meteor.Error('unauthorized');
+			}
+		};
+		var methodData = _.object([
+			[methodName, method]
+		]);
+		if (_options.serverOnly) {
+			if (Meteor.isServer) {
+				Meteor.methods(methodData);
+			}
+		} else {
+			Meteor.methods(methodData);
+		}
+		allMethods[_options.entryName] = methodName;
 		return methodName;
 	});
 
