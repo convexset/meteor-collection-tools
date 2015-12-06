@@ -112,21 +112,21 @@ Tinytest.add("[CollectionTools] instance.validate ignoring off schema fields", f
 	test.equal(numBadKeys(instanceExtraField.validate(true)), 0, "numBadKeys instanceExtraField");
 });
 
-Tinytest.add("[CollectionTools] instance.validate ignoring off schema fields with some alt schema elements", function(test) {
-	test.equal(numBadKeys(instanceBadName.validate(true)), 1, "numBadKeys instanceBadName (default options)");
-	test.isTrue(hasBadKey(instanceBadName.validate(true), 'name'), "hasBadKey instanceBadName (default options)");
-	test.equal(numBadKeys(instanceBadName.validate(true, {
-		name: {
-			type: Number
-		}
-	})), 0, "numBadKeys instanceBadName");
-});
+// Tinytest.add("[CollectionTools] instance.validate ignoring off schema fields with some alt schema elements", function(test) {
+// 	test.equal(numBadKeys(instanceBadName.validate(true)), 1, "numBadKeys instanceBadName (default options)");
+// 	test.isTrue(hasBadKey(instanceBadName.validate(true), 'name'), "hasBadKey instanceBadName (default options)");
+// 	test.equal(numBadKeys(instanceBadName.validate(true, {
+// 		name: {
+// 			type: Number
+// 		}
+// 	})), 0, "numBadKeys instanceBadName");
+// });
 
-Tinytest.add("[CollectionTools] instance.validate ignoring off schema fields with alt schema elements {} and with some tag", function(test) {
-	test.equal(numBadKeys(instanceNameOnly.validate(true, {}, 'name-only')), 0, "numBadKeys instanceNameOnly");
-	test.equal(numBadKeys(instanceNameOnlyBad.validate(true, {}, 'name-only')), 1, "numBadKeys instanceNameOnlyBad");
-	test.isTrue(hasBadKey(instanceNameOnlyBad.validate(true, {}, 'name-only'), 'name'), "hasBadKey instanceNameOnlyBad");
-});
+// Tinytest.add("[CollectionTools] instance.validate ignoring off schema fields with alt schema elements {} and with some tag", function(test) {
+// 	test.equal(numBadKeys(instanceNameOnly.validate(true, {}, 'name-only')), 0, "numBadKeys instanceNameOnly");
+// 	test.equal(numBadKeys(instanceNameOnlyBad.validate(true, {}, 'name-only')), 1, "numBadKeys instanceNameOnlyBad");
+// 	test.isTrue(hasBadKey(instanceNameOnlyBad.validate(true, {}, 'name-only'), 'name'), "hasBadKey instanceNameOnlyBad");
+// });
 
 Tinytest.add("[CollectionTools] constructor.getObjectWithDefaultValues", function(test) {
 	test.equal(instanceDefault.name, "name", "name");

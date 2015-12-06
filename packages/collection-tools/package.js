@@ -1,6 +1,6 @@
 Package.describe({
 	name: 'convexset:collection-tools',
-	version: '0.0.1',
+	version: '0.0.2',
 	summary: 'A tool for \"unifying\" collections, Meteor methods, schemas and transformations',
 	git: 'https://github.com/convexset/meteor-collection-tools',
 	documentation: '../../README.md'
@@ -12,8 +12,9 @@ Package.onUse(function(api) {
 
 	api.use(
 		[
-			'ecmascript', 'underscore', 'check', 'ejson', 'mongo',
-			'aldeed:simple-schema@1.3.3',
+			'ecmascript', 'underscore', 'check', 'ejson',
+			'mongo', 'ddp-rate-limiter',
+			'aldeed:simple-schema@1.4.0',
 			'convexset:match-extensions@0.1.1', 'convexset:package-utils@0.1.3',
 		]
 	);

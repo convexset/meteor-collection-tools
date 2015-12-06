@@ -1,6 +1,7 @@
 /* global SimpleSchema: true */
 /* global check: true */
 /* global Match: true */
+/* global DDPRateLimiter: true */
 
 /* global CollectionTools: true */
 /* global PackageUtilities: true */
@@ -13,89 +14,130 @@ var __ct = function CollectionTools() {};
 
 CollectionTools = new __ct();
 
-var baseConstructorPrototype = {
-	// TODO: make this work all the way into objects; do splitting and such
-	_asPlainObject: function _asPlainObject(ignore_off_schema_fields) {
-		var schemaDesc = ignore_off_schema_fields ? this.constructor.schemaDescription : {};
+function filterObject(o, getCheckableSchemaFunc, ignore_off_schema_fields, prefix) {
+	if (typeof prefix === "undefined") {
+		prefix = "";
+	}
+	var checkableSchema = getCheckableSchemaFunc(prefix);
 
-		var thisAsObj = {};
-		for (var k in this) {
-			if (this.hasOwnProperty(k)) {
-				if ((!ignore_off_schema_fields) || (k in schemaDesc)) {
-					// Keep if not ignoring off schema fields or...
-					// Ignoring off schema fields and k in schemaDesc
-					thisAsObj[k] = this[k];
-				}
-			}
-		}
-		return thisAsObj;
-	},
-	_obtainTopLevelSubSchemaAndFilteredObject: function _obtainTopLevelSubSchemaAndFilteredObject(ignore_off_schema_fields, altSchemaElements, tag, o) {
-		var k;
-
-		var selectedSchema = this.constructor.getModifiedSchema(altSchemaElements, tag);
-		var selectedSchemaDesc = selectedSchema._schema;
-
-		var filteredObject;
-
-		if (ignore_off_schema_fields) {
-			filteredObject = {};
-			for (k in selectedSchemaDesc) {
-				if (selectedSchemaDesc.hasOwnProperty(k)) {
-					filteredObject[k] = o[k];
-				}
+	if (_.isArray(checkableSchema)) {
+		if (_.isArray(o)) {
+			if ((checkableSchema.length === 1) && (_.isFunction(checkableSchema[0]))) {
+				return o;
+			} else {
+				return o.map(item => filterObject(item, getCheckableSchemaFunc, ignore_off_schema_fields, prefix === "" ? '$' : (prefix + ".$")));
 			}
 		} else {
-			filteredObject = _.extend({}, o);
+			if (ignore_off_schema_fields) {
+				return o;
+			} else {
+				throw new Meteor.Error('invalid-field', prefix);
+			}
 		}
+	}
 
+	var thisAsObj = {};
+	_.forEach(o, function(v, f) {
+		if (checkableSchema.hasOwnProperty(f)) {
+			var typeInfo = checkableSchema[f];
+			if (_.isFunction(typeInfo)) {
+				thisAsObj[f] = o[f];
+			} else if (_.isObject(typeInfo) && _.isObject(o[f])) {
+				thisAsObj[f] = filterObject(o[f], getCheckableSchemaFunc, ignore_off_schema_fields, prefix === "" ? f : (prefix + '.' + f));
+			} else {
+				throw new Meteor.Error('invalid-type-info', prefix === "" ? f : (prefix + '.' + f));
+			}
+		} else {
+			// Keep if in schema or not ignoring off schema fields
+			if (!ignore_off_schema_fields) {
+				thisAsObj[f] = o[f];
+			}
+		}
+	});
+	return thisAsObj;
+}
+PackageUtilities.addImmutablePropertyFunction(CollectionTools, '_filterObject', filterObject);
+
+var baseConstructorPrototype = {
+	_asPlainObject: function _asPlainObject(ignore_off_schema_fields) {
+		return filterObject(this, _.bind(this.constructor.getCheckableSchema, this.constructor), ignore_off_schema_fields);
+	},
+	validate: function validate(ignore_off_schema_fields) {
+		var thisAsPlainObject = this._asPlainObject(ignore_off_schema_fields);
+		var ssContext = this.constructor.schema.newContext();
+		var result = ssContext.validate(thisAsPlainObject);
 		return {
-			filteredObject: filteredObject,
-			selectedSchema: selectedSchema
+			result: result,
+			context: ssContext
 		};
 	},
-	validate: function validate(ignore_off_schema_fields, altSchemaElements, tag) {
-		return this._validate(false, ignore_off_schema_fields, altSchemaElements, tag);
-	},
-	validateWithCheck: function validateWithCheck(ignore_off_schema_fields, altSchemaElements, tag) {
-		return this._validate(true, ignore_off_schema_fields, altSchemaElements, tag);
-	},
-	_validate: function _validate(useCheck, ignore_off_schema_fields, altSchemaElements, tag) {
-		var ssContext, result;
+	validateWithCheck: function validateWithCheck(ignore_off_schema_fields) {
 		var thisAsPlainObject = this._asPlainObject(ignore_off_schema_fields);
-
-		// By default, be strict with schema don't allow extras
-		ignore_off_schema_fields = !!ignore_off_schema_fields;
-
-		if (typeof altSchemaElements === "undefined") {
-			// No alt. schema elements
-			altSchemaElements = {};
-		}
-
-		var validationItems = this._obtainTopLevelSubSchemaAndFilteredObject(ignore_off_schema_fields, altSchemaElements, tag, thisAsPlainObject);
-
-		if (useCheck) {
-			return check(validationItems.filteredObject, validationItems.selectedSchema);
-		} else {
-			ssContext = validationItems.selectedSchema.newContext();
-			result = ssContext.validate(validationItems.filteredObject);
-			return {
-				result: result,
-				context: ssContext
-			};
-		}
-	},
-	getSchemaDescribedTopLevelFields: function getSchemaDescribedTopLevelFields() {
-		var schemaDesc = this.constructor.schemaDescription;
-		var o = {};
-		for (var k in schemaDesc) {
-			if (schemaDesc.hasOwnProperty(k) && (k === k.split('.')[0])) {
-				o[k] = this[k];
-			}
-		}
-		return o;
+		return check(thisAsPlainObject, this.constructor.schema);
 	},
 };
+
+function applyRateLimitItem(name, type, rateLimit, rateLimitInterval) {
+	if (typeof rateLimitInterval === "undefined") {
+		rateLimitInterval = 1000;
+	}
+	if (typeof rateLimitInterval === "undefined") {
+		rateLimitInterval = 1000;
+	}
+	DDPRateLimiter.addRule({
+		type: type,
+		name: name,
+		connectionId: () => true,
+	}, rateLimit, rateLimitInterval);
+}
+
+
+// create method and specify all elements of the method separately
+var __allMethodNames = [];
+PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', function createMethod(options) {
+	options = PackageUtilities.updateDefaultOptionsWithInput({
+		name: "some-method-name",
+		schema: {},
+		authenticationCheck: () => true, // (userId) => true,
+		unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
+		method: () => null,
+		simulateNothing: false,
+		rateLimit: 10,
+		rateLimitInterval: 1000,
+	}, options);
+
+	if (__allMethodNames.indexOf(options.name) !== -1) {
+		__allMethodNames.push(options.name);
+	} else {
+		throw new Meteor.Error('repeated-method-name', options.name);
+	}
+
+	// method body
+	var method = function(...args) {
+		// check arguments
+		check(args, new SimpleSchema(options.schema));
+		this.unblock();
+
+		if ((!options.simulateNothing) || (!Meteor.isSimulation)) {
+			// authenticate
+			if (options.authenticationCheck(this.userId)) {
+				return options.method.apply(args);
+			} else {
+				throw new Meteor.Error('unauthorized');
+			}
+		}
+	};
+
+	// declare method
+	Meteor.methods(_.object([
+		[options.name, method]
+	]));
+
+	// rate limit
+	if (!!options.rateLimit && !!options.rateLimitInterval) {
+		applyRateLimitItem(options.name, 'method', options.rateLimit, options.rateLimitInterval);
+	}
+});
 
 PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function build(options) {
 
@@ -108,6 +150,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		transform: x => x,
 		globalAuthFunction: () => true,
 		methodPrefix: 'collections/',
+		defaultRateLimit: 10,
+		defaultRateLimitInterval: 1000,
 	}, options);
 	if (options.collectionName === "") {
 		options.collectionName = null;
@@ -177,11 +221,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			return [kk, v];
 		}));
 	});
-	var schemaDesc = ConstructorFunction._schemaDescription;
 	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getTypeInfo', function getTypeInfo(fieldSpec) {
 		var match;
 		var fieldSpecSplit = fieldSpec.split(".");
-		_.forEach(schemaDesc, function(desc, f) {
+		_.forEach(ConstructorFunction._schemaDescription, function(desc, f) {
 			if (!!match) {
 				return;
 			}
@@ -189,7 +232,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			if (f_split.length !== fieldSpecSplit.length) {
 				return;
 			}
+
 			for (var k = 0; k < f_split.length; k++) {
+				// give wildcards a pass
 				if ((f_split[k] !== fieldSpecSplit[k]) && (f_split[k] !== "*")) {
 					return;
 				}
@@ -223,25 +268,13 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		_.forEach(schemaDesc, function(item, key) {
 			if (key.indexOf('.') === -1) {
 				// Top Level only!!! Everything should be there.
-				if (typeof item.defaultValue === "undefined") {
+				if ((!item.optional) && (typeof item.defaultValue === "undefined")) {
 					throw new Meteor.Error('default-value-not-found', key);
 				}
 				obj[key] = (item.defaultValue instanceof Function) ? item.defaultValue() : item.defaultValue;
 			}
 		});
 		return (prefix === "") ? new ConstructorFunction(obj) : obj;
-	});
-
-
-	PackageUtilities.addPropertyGetter(ConstructorFunction, 'defaultValuesDescription', function getDefaultValuesDescription(prefix) {
-		return _.object(
-			_.map(
-				ConstructorFunction._schemaDescription, (v, k) => [k, v.defaultValue]
-			)
-			.filter(
-				x => (x[0][x.length - 1] !== "*") && (typeof x[1] !== "undefined")
-			)
-		);
 	});
 
 
@@ -257,8 +290,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 
 		for (k in altSchemaElements) {
 			if (altSchemaElements.hasOwnProperty(k)) {
-				if (!(k in schemaDesc)) {
-					throw "alt-schema-entry-not-in-schema";
+				if (!schemaDesc.hasOwnProperty(k)) {
+					throw new Meteor.Error("alt-schema-entry-not-in-schema", k);
 				}
 			}
 		}
@@ -321,40 +354,6 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		return ret;
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getSubSchemas_Simple', function getSubSchemas_Simple() {
-		// Gets top-level schemas
-		var ItemType = this;
-
-		return _.object(_.map(ItemType.getSchema()._schema, function(_info, _key) {
-				return [_key, _info.type];
-			}).filter(function(data) {
-				return (data[0].split('.').length === 1) && (data[1].type !== Array);
-			})
-			.concat(
-				_.map(ItemType.getSchema()._schema, function(info, key) {
-					return {
-						info: info,
-						key: key
-					};
-				}).filter(function(typeInfo) {
-					return typeInfo.info.type === Object;
-				}).map(function(x) {
-					var area = x.key.split('.')[0];
-					return [
-						area,
-						_.object(
-							_.map(ItemType.getSchema()._schema, function(_info, _key) {
-								return [_key, _info.type];
-							}).filter(function(data) {
-								var _area_len = data[0].split('.').length;
-								var _area = data[0].split('.')[0];
-								return _area === area && _area_len === 3;
-							}).map(x => [x[0].split('.').pop(), x[1]])
-						)
-					];
-				})
-			));
-	});
 
 	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'filterWithTopLevelSchema', function filterWithTopLevelSchema(o, call_functions, altSchemaElements, tag) {
 		// If elements of o are functions, call without parameters
@@ -376,27 +375,25 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		};
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'castAndValidate', function castAndValidate(o, call_functions, altSchemaElements, tag) {
-		var filteredObject = ConstructorFunction.filterWithTopLevelSchema(o, call_functions, altSchemaElements, tag).filteredObject;
-		var castObj = new ConstructorFunction(filteredObject);
-		return castObj.validate(false, altSchemaElements, tag); // should be no problem passing a false there
-	});
 
-
-
-	var pubs = {};
-	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'publications', pubs);
+	////////////////////////////////////////////////////////////
+	// Publications
+	////////////////////////////////////////////////////////////
+	var __publicationList = {};
+	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'publications', __publicationList);
 	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makePublication', function makePublication(pubName, _options) {
 		if (!_options) {
 			_options = {};
 		}
-		if (typeof pubs[pubName] !== "undefined") {
+		if (typeof __publicationList[pubName] !== "undefined") {
 			throw new Meteor.Error('publication-already-exists', pubName);
 		}
 		_options = PackageUtilities.updateDefaultOptionsWithInput({
 			selector: {},
 			selectOptions: {},
 			additionalAuthFunction: () => true,
+			rateLimit: null,
+			rateLimitInterval: null,
 		}, _options);
 		if (Meteor.isServer) {
 			Meteor.publish(pubName, function() {
@@ -407,12 +404,21 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 					throw new Meteor.Error('unauthorized');
 				}
 			});
+
+			// rate limit
+			if (!!_options.rateLimit && !!_options.rateLimitInterval) {
+				applyRateLimitItem(pubName, 'subscription', _options.rateLimit, _options.rateLimitInterval);
+			} else {
+				if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
+					applyRateLimitItem(pubName, 'subscription', options.defaultRateLimit, options.defaultRateLimitInterval);
+				}
+			}
 		}
 		// Add default pubName
-		if (_.map(pubs, x => x).length === 0) {
+		if (_.map(__publicationList, x => x).length === 0) {
 			PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'defaultPublication', pubName);
 		}
-		pubs[pubName] = pubs;
+		__publicationList[pubName] = pubName;
 	});
 
 
@@ -420,13 +426,15 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		if (!_options) {
 			_options = {};
 		}
-		if (typeof pubs[pubName] !== "undefined") {
+		if (typeof __publicationList[pubName] !== "undefined") {
 			throw new Meteor.Error('publication-already-exists', pubName);
 		}
 		_options = PackageUtilities.updateDefaultOptionsWithInput({
 			idField: "_id",
 			selectOptions: {},
 			additionalAuthFunction: () => true,
+			rateLimit: null,
+			rateLimitInterval: null,
 		}, _options);
 		if (Meteor.isServer) {
 			Meteor.publish(pubName, function(id) {
@@ -439,22 +447,35 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 					throw new Meteor.Error('unauthorized');
 				}
 			});
+
+			// rate limit
+			if (!!_options.rateLimit && !!_options.rateLimitInterval) {
+				applyRateLimitItem(pubName, 'subscription', _options.rateLimit, _options.rateLimitInterval);
+			} else {
+				if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
+					applyRateLimitItem(pubName, 'subscription', options.defaultRateLimit, options.defaultRateLimitInterval);
+				}
+			}
 		}
-		// Add default pubName
-		if (_.map(pubs, x => x).length === 0) {
-			PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'defaultPublication', pubName);
+		// Add default pubName by Id
+		if (_.map(__publicationList, x => x).length === 0) {
+			PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'defaultPublication_byId', pubName);
 		}
-		pubs[pubName] = pubs;
+		__publicationList[pubName] = pubName;
 	});
 
+
+	////////////////////////////////////////////////////////////
+	// Methods
+	////////////////////////////////////////////////////////////
 	var allMethods = {};
 	var addMethods = {};
 	var updateMethods = {};
-	var removalMethods = {};
+	var removeMethods = {};
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'allMethods', allMethods);
-	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'addMethods', removalMethods);
+	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'addMethods', removeMethods);
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'updateMethods', updateMethods);
-	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'removalMethods', removalMethods);
+	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'removeMethods', removeMethods);
 
 	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_add', function makeMethod_add(_options) {
 		if (!_options) {
@@ -464,9 +485,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			entryPrefix: 'add',
 			withParams: false,
 			field: "",
-			serverOnly: false,
 			additionalAuthFunction: () => true,
 			finishers: [],
+			// rateLimit: null,
+			// rateLimitInterval: null,
 		}, _options);
 		_options.field = _options.field.split('.')[0];
 
@@ -494,7 +516,18 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 					this.unblock();
 					if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
 						var doc = ConstructorFunction.getObjectWithDefaultValues();
-						return collection.insert(doc);
+						var ret = collection.insert(doc);
+						_options.finishers.forEach(function(fn) {
+							if (fn instanceof Function) {
+								fn.apply({
+									context: this,
+									id: id,
+									doc: doc,
+									result: ret
+								});
+							}
+						});
+						return ret;
 					} else {
 						throw new Meteor.Error('unauthorized');
 					}
@@ -505,7 +538,18 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 					check(doc, schema);
 					this.unblock();
 					if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-						return collection.insert(doc);
+						var ret = collection.insert(doc);
+						_options.finishers.forEach(function(fn) {
+							if (fn instanceof Function) {
+								fn.apply({
+									context: this,
+									id: id,
+									doc: doc,
+									result: ret
+								});
+							}
+						});
+						return ret;
 					} else {
 						throw new Meteor.Error('unauthorized');
 					}
@@ -528,8 +572,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 								fn.apply({
 									context: this,
 									id: id,
+									doc: subDoc,
 									result: ret
-								}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+								});
 							}
 						});
 						return ret;
@@ -553,9 +598,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 								fn.apply({
 									context: this,
 									id: id,
-									subDoc: subDoc,
+									doc: subDoc,
 									result: ret
-								}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+								});
 							}
 						});
 						return ret;
@@ -565,16 +610,20 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				};
 			}
 		}
-		var methodData = _.object([
+
+		Meteor.methods(_.object([
 			[methodName, method]
-		]);
-		if (_options.serverOnly) {
-			if (Meteor.isServer) {
-				Meteor.methods(methodData);
-			}
+		]));
+
+		// rate limit
+		if (!!_options.rateLimit && !!_options.rateLimitInterval) {
+			applyRateLimitItem(methodName, 'method', _options.rateLimit, _options.rateLimitInterval);
 		} else {
-			Meteor.methods(methodData);
+			if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
+				applyRateLimitItem(methodName, 'method', options.defaultRateLimit, options.defaultRateLimitInterval);
+			}
 		}
+
 		allMethods[_options.entryName] = methodName;
 		addMethods[_options.entryName] = methodName;
 		return _options.entryName;
@@ -587,9 +636,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		_options = PackageUtilities.updateDefaultOptionsWithInput({
 			entryPrefix: 'remove',
 			field: "",
-			serverOnly: false,
 			additionalAuthFunction: () => true,
 			finishers: [],
+			// rateLimit: null,
+			// rateLimitInterval: null,
 		}, _options);
 		_options.field = _options.field.split('.')[0];
 
@@ -607,6 +657,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 
 		var method;
 		if (_options.field === "") {
+			// remove document
 			method = function(id) {
 				check(id, String);
 				this.unblock();
@@ -618,7 +669,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 								context: this,
 								id: id,
 								result: ret
-							}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+							});
 						}
 					});
 					return ret;
@@ -626,7 +677,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 					throw new Meteor.Error('unauthorized');
 				}
 			};
-		} else if (ConstructorFunction.getCheckableSchema()[_options.field] instanceof Array) {
+		} else if (_.isArray(ConstructorFunction.getCheckableSchema()[_options.field])) {
+			// remove array entry
 			method = function(id, idx) {
 				check(id, String);
 				check(idx, Match.isPositiveInteger);
@@ -656,7 +708,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 								id: id,
 								idx: idx,
 								result: ret
-							}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+							});
 						}
 					});
 					return ret;
@@ -665,6 +717,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				}
 			};
 		} else {
+			// unset entire field
 			method = function(id) {
 				check(id, String);
 				this.unblock();
@@ -680,7 +733,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 								context: this,
 								id: id,
 								result: ret
-							}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+							});
 						}
 					});
 					return ret;
@@ -690,18 +743,21 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			};
 		}
 
-		var methodData = _.object([
+		Meteor.methods(_.object([
 			[methodName, method]
-		]);
-		if (_options.serverOnly) {
-			if (Meteor.isServer) {
-				Meteor.methods(methodData);
-			}
+		]));
+
+		// rate limit
+		if (!!_options.rateLimit && !!_options.rateLimitInterval) {
+			applyRateLimitItem(methodName, 'method', _options.rateLimit, _options.rateLimitInterval);
 		} else {
-			Meteor.methods(methodData);
+			if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
+				applyRateLimitItem(methodName, 'method', options.defaultRateLimit, options.defaultRateLimitInterval);
+			}
 		}
+
 		allMethods[_options.entryName] = methodName;
-		removalMethods[_options.field] = methodName;
+		removeMethods[_options.field] = methodName;
 		return _options.entryName;
 	});
 
@@ -713,9 +769,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			field: '',
 			type: Function,
 			entryPrefix: 'update',
-			serverOnly: false,
 			additionalAuthFunction: () => true,
 			finishers: [],
+			// rateLimit: null,
+			// rateLimitInterval: null,
 		}, _options);
 
 		if (typeof _options.entryName === "undefined") {
@@ -761,7 +818,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 							value: value,
 							args: args,
 							result: ret
-						}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+						});
 					}
 				});
 				return ret;
@@ -769,16 +826,20 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				throw new Meteor.Error('unauthorized');
 			}
 		};
-		var methodData = _.object([
+
+		Meteor.methods(_.object([
 			[methodName, method]
-		]);
-		if (_options.serverOnly) {
-			if (Meteor.isServer) {
-				Meteor.methods(methodData);
-			}
+		]));
+
+		// rate limit
+		if (!!_options.rateLimit && !!_options.rateLimitInterval) {
+			applyRateLimitItem(methodName, 'method', _options.rateLimit, _options.rateLimitInterval);
 		} else {
-			Meteor.methods(methodData);
+			if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
+				applyRateLimitItem(methodName, 'method', options.defaultRateLimit, options.defaultRateLimitInterval);
+			}
 		}
+
 		allMethods[_options.entryName] = methodName;
 		updateMethods[_options.field] = methodName;
 		return methodName;
@@ -790,9 +851,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}
 		_options = _.extend({
 			entryName: 'general-update',
-			serverOnly: false,
 			additionalAuthFunction: () => true,
 			finishers: [],
+			// rateLimit: null,
+			// rateLimitInterval: null,
 		}, _options);
 
 		var methodName = options.methodPrefix + _options.entryName;
@@ -825,7 +887,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 							id: id,
 							updates: updates,
 							result: ret
-						}, Array.prototype.slice.call(arguments, 0)); // Meteor.bindEnvironment(fn)();
+						});
 					}
 				});
 				return ret;
@@ -833,16 +895,20 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				throw new Meteor.Error('unauthorized');
 			}
 		};
-		var methodData = _.object([
+
+		Meteor.methods(_.object([
 			[methodName, method]
-		]);
-		if (_options.serverOnly) {
-			if (Meteor.isServer) {
-				Meteor.methods(methodData);
-			}
+		]));
+
+		// rate limit
+		if (!!_options.rateLimit && !!_options.rateLimitInterval) {
+			applyRateLimitItem(methodName, 'method', _options.rateLimit, _options.rateLimitInterval);
 		} else {
-			Meteor.methods(methodData);
+			if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
+				applyRateLimitItem(methodName, 'method', options.defaultRateLimit, options.defaultRateLimitInterval);
+			}
 		}
+
 		allMethods[_options.entryName] = methodName;
 		return methodName;
 	});
@@ -853,9 +919,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}
 		_options = _.extend({
 			entryPrefix: 'update-gen',
-			serverOnly: false,
 			additionalAuthFunction: () => true,
 			finishers: [],
+			// rateLimit: null,
+			// rateLimitInterval: null,
 		}, _options);
 
 		var _schemaDesc = ConstructorFunction._schemaDescription;
@@ -864,7 +931,6 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				field: k,
 				type: ConstructorFunction.getCheckableSchema(k),
 				entryPrefix: _options.entryPrefix,
-				serverOnly: _options.serverOnly,
 				additionalAuthFunction: _options.additionalAuthFunction,
 				finishers: _options.finishers,
 			});

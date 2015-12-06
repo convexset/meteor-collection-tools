@@ -21,7 +21,7 @@ This Meteor package is a tool for building "types". Select a Mongo collection, s
 
 This is available as [`convexset:collection-tools`](https://atmospherejs.com/convexset/collection-tools) on [Atmosphere](https://atmospherejs.com/). (Install with `meteor add convexset:collection-tools`.)
 
-## Usage
+## Usage: `CollectionTools.build`
 
 Begin by calling:
 
@@ -40,7 +40,7 @@ ConstructorFunction = CollectionTools.build({
 			...
 		},
 		field2: {
-			type: TypeOfField1,
+			type: TypeOfField2,
 			...
 		}
 	},
@@ -61,43 +61,162 @@ ConstructorFunction = CollectionTools.build({
 
 	// The default prefix for generated Meteor methods
 	methodPrefix: "collections/collection-name/",
+
+	// Default rate limiting parameters for publications and methods
+	defaultRateLimit: 10,            // (default: 10; null to not set)
+	defaultRateLimitInterval: 1000,  // (default: 1000; null to not set)
 })
 ```
 
-#### Constructor Methods
+### Instance Methods/Properties
 
- - `validate(ignore_off_schema_fields, altSchemaElements, tag)`
- - `validateWithCheck(ignore_off_schema_fields, altSchemaElements, tag)`
- - `getSchemaDescribedTopLevelFields: function getSchemaDescribedTopLevelFields()`
+ - `validate()`: validates object 
+ - `validateWithCheck()`: validates object using `check`
 
+### Constructor Methods
 
-#### Instance Methods/Properties
+#### Schemas and Validation
 
-###### Schemas and Validation
+ - `schema`: returns the relevant `SimpleSchema` object
+ - `schemaDescription`: returns the relevant arguments used to create the `SimpleSchema` object
+ - `_schemaDescription`: similar to `schemaDescription`, except `'$'` is replaced with `'*'` in the keys
+ - `getTypeInfo(fieldSpec)`: gets the type info for a field specific field (matches wildcards, so `'ratings.3.rating'` would return the type info for `'ratings.$.rating'`)
+ - `getObjectWithDefaultValues(prefix)`: returns an object (or sub-object) with default values
+   * use with no arguments for entire document
+   * use with `prefix` to obtain default values for sub-objects or arrays (e.g.: `xxx.getObjectWithDefaultValues('ratings.$')` where `ratings` is an array of objects)
 
- - `schema`
- - `schemaDescription`
- - `_schemaDescription`
- - `getTypeInfo(fieldSpec)`
+ - `getModifiedSchema(altSchemaElements, tag)`: returns a "modified schema"
+   * `altSchemaElements` (optional): schema elements to replace items in existing schema (Why would you ever want to use this? Someone asked me for this... Don't blame me.)
+   * `tag` (optional): filters for items with `tag` in the `subSchemaTags` field of fields in the schema
+ - `getCheckableSchema(prefix)`: gets an plain javascript object description of a schema that can be used directly with `check`
+   * use with no arguments for entire document
+   * use with `prefix` to obtain default values for sub-objects or arrays (e.g.: `xxx.getObjectWithDefaultValues('ratings.$')` where `ratings` is an array of objects)
 
- - `getObjectWithDefaultValues(prefix)`
- - `getModifiedSchema(altSchemaElements, tag)`
- - `getCheckableSchema(prefix)`
-
- - `filterWithTopLevelSchema(o, call_functions, altSchemaElements, tag)`
- - `castAndValidate(o, call_functions, altSchemaElements, tag)`
+ - `filterWithTopLevelSchema(o, call_functions, altSchemaElements, tag)`: construct modified schema (see `getModifiedSchema` above) and filter an object by that schema (top-level fields only)
+   * `o`: the object
+   * `call_functions`: if field takes a function value, replace with the return value of the function called with no parameters
+   * `altSchemaElements`: see `getModifiedSchema` above
+   * `tag`: see `getModifiedSchema` above
  
-###### Publications and Add/Update/Remove Methods
+#### Generated Publications
 
- - `publications`
- - `makePublication(pubName, _options)`
+ - `publications`: list of all generated publications
+ - `makePublication(pubName, options)`: creates a publication named `pubName` with the following options
+   * `selector`: [selector](http://docs.meteor.com/#/full/find) (default: `{}`)
+   * `selectOptions`: [selector options](http://docs.meteor.com/#/full/find) (default: `{}`)
+   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `rateLimit`: rate limiting count (default: `null`)
+   * `rateLimitInterval`: rate limiting interval (default: `null`)
+ - `makePublication_getById(pubName, options)`: creates a publication named `pubName` that selects a document (documents)
+   * `idField`: name of the id field (default: `_id`)
+   * `selectOptions`: [selector options](http://docs.meteor.com/#/full/find) (default: `{}`)
+   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `rateLimit`: rate limiting count (default: `null`)
+   * `rateLimitInterval`: rate limiting interval (default: `null`)
 
- - `allMethods`
- - `addMethods`
- - `updateMethods`
- - `removalMethods`
+#### Generated Methods
 
- - `makeMethod_add(_options)`
- - `makeMethod_remove(_options)`
- - `makeMethods_updater(_options)`
- - `makeGenericMethod_updaters(_options)`
+ - `allMethods`: list of all generated methods
+ - `addMethods`: list of all generated "add methods"
+ - `updateMethods`: list of all generated "update methods"
+ - `removeMethods`: list of all generated "remove methods"
+
+ - `makeMethod_add(options)`: creates a method
+   * `entryPrefix`: entry prefix of method (default: 'add')
+   * `field`: the field in question; `""` to add an entire document (default: `""`); 
+   * `withParams`: true to add an entire document/sub-document as provided; false to use default values (default: `false`),
+   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`),
+     - `context`: `this` in Meteor methods
+     - `id`: id
+     - `doc`: the inserted document/sub-document
+     - `result`: return code of operation
+   * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+   * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+
+ - `makeMethod_remove(options)`: creates a removal method with signature `function(id)` (for removal of entire documents or unsetter of fields) or (`function(id, idx)` for arrays)
+   * `entryPrefix`: entry prefix of method (default: 'remove')
+   * `field`: `""` for removal of an entire document; for fields that are specified and are arrays, the method takes an additional parameter (the index) and removes an array element, otherwise, the entire field is unset (default: `""`)
+   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`),
+     - `context`: `this` in Meteor methods
+     - `id`: id
+     - `idx`: index of array element (if applicable)
+     - `result`: return code of operation
+   * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+   * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+
+ - `makeMethods_updater(options)`: creates generic field-specific updaters with signature `function(id, value, ...args)`
+   * `entryName`: entry name (default: `'general-update'`)
+   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`)
+     - `context`: `this` in Meteor methods
+     - `id`: id
+     - `value`: value
+     - `args`: arguments for updater of field with wildcards
+     - `result`: return code of operation
+   * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+   * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+ - `makeGenericMethod_updaters(options)`: creates top-level generic field-specific updaters with signature `function(id, value, ...args)` (see `makeMethods_updater` above) with the following options
+   * `entryPrefix`: prefix for methods
+   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`; see `makeMethods_updater` above for more information) 
+   * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+   * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+ - `makeMethods_generalUpdater(options)`: creates a monolithic updater for a document with the signature `function(id, updates)`
+   * `entryName`: entry name (default: `'general-update'`)
+   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`),
+     - `context`: `this` in Meteor methods
+     - `id`: id
+     - `updates`: update object
+     - `result`: return code of operation
+   * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+   * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+
+
+## Other Utility Methods
+
+### `CollectionTools.createMethod`
+
+See inline comments
+
+```javascript
+CollectionTools.createMethod({
+	name: "some-method-name",
+
+	// schema in SimpleSchema format
+	schema: {
+		_id: {
+			type: String,
+			regEx: /^[0-9a-zA-Z]{17,24}$/
+		},
+		field2: {
+			type: TypeOfField2,
+			...
+		}
+	},
+
+	// Authentication check function
+	// a function that takes a user id (via this.userId) and returns true if
+	// authorized and false otherwise
+	authenticationCheck: () => true,  // (userId) => true,
+	// a string or function that maps (options, userId) to the unautorized use message 
+	unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
+	// unauthorizedMessage: "unauthorized",
+
+
+	// the method body
+	method: function removeItem(_id) {
+		return SomeCollection.remove(_id);
+	},
+
+	// if true, will run no simulation
+	// (useful if server-only functions are called)
+	simulateNothing: false,
+
+	// Rate limiting parameters for publications and methods
+	rateLimit: 10,            // (default: 10; null to not set)
+	rateLimitInterval: 1000,  // (default: 1000; null to not set)
+});
+```
