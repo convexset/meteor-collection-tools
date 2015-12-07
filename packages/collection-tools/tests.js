@@ -88,12 +88,6 @@ var instanceExtraField = new Thing({
 	num: 0,
 	xxx: 0
 });
-var instanceNameOnly = new Thing({
-	name: "name"
-});
-var instanceNameOnlyBad = new Thing({
-	name: 0
-});
 
 Tinytest.add("[CollectionTools] instance.validate without options", function(test) {
 	test.equal(numBadKeys(instanceDefault.validate()), 0, "numBadKeys instanceDefault");
@@ -109,24 +103,8 @@ Tinytest.add("[CollectionTools] instance.validate not ignoring off schema fields
 });
 
 Tinytest.add("[CollectionTools] instance.validate ignoring off schema fields", function(test) {
-	test.equal(numBadKeys(instanceExtraField.validate(true)), 0, "numBadKeys instanceExtraField");
+	test.equal(numBadKeys(instanceExtraField.validate(false, true)), 0, "numBadKeys instanceExtraField");
 });
-
-// Tinytest.add("[CollectionTools] instance.validate ignoring off schema fields with some alt schema elements", function(test) {
-// 	test.equal(numBadKeys(instanceBadName.validate(true)), 1, "numBadKeys instanceBadName (default options)");
-// 	test.isTrue(hasBadKey(instanceBadName.validate(true), 'name'), "hasBadKey instanceBadName (default options)");
-// 	test.equal(numBadKeys(instanceBadName.validate(true, {
-// 		name: {
-// 			type: Number
-// 		}
-// 	})), 0, "numBadKeys instanceBadName");
-// });
-
-// Tinytest.add("[CollectionTools] instance.validate ignoring off schema fields with alt schema elements {} and with some tag", function(test) {
-// 	test.equal(numBadKeys(instanceNameOnly.validate(true, {}, 'name-only')), 0, "numBadKeys instanceNameOnly");
-// 	test.equal(numBadKeys(instanceNameOnlyBad.validate(true, {}, 'name-only')), 1, "numBadKeys instanceNameOnlyBad");
-// 	test.isTrue(hasBadKey(instanceNameOnlyBad.validate(true, {}, 'name-only'), 'name'), "hasBadKey instanceNameOnlyBad");
-// });
 
 Tinytest.add("[CollectionTools] constructor.getObjectWithDefaultValues", function(test) {
 	test.equal(instanceDefault.name, "name", "name");

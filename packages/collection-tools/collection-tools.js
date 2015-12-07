@@ -14,7 +14,7 @@ var __ct = function CollectionTools() {};
 
 CollectionTools = new __ct();
 
-function filterObject(o, getCheckableSchemaFunc, ignore_off_schema_fields, prefix) {
+function filterObject(o, getCheckableSchemaFunc, ignoreOffSchemaFields, prefix) {
 	if (typeof prefix === "undefined") {
 		prefix = "";
 	}
@@ -25,10 +25,10 @@ function filterObject(o, getCheckableSchemaFunc, ignore_off_schema_fields, prefi
 			if ((checkableSchema.length === 1) && (_.isFunction(checkableSchema[0]))) {
 				return o;
 			} else {
-				return o.map(item => filterObject(item, getCheckableSchemaFunc, ignore_off_schema_fields, prefix === "" ? '$' : (prefix + ".$")));
+				return o.map(item => filterObject(item, getCheckableSchemaFunc, ignoreOffSchemaFields, prefix === "" ? '$' : (prefix + ".$")));
 			}
 		} else {
-			if (ignore_off_schema_fields) {
+			if (ignoreOffSchemaFields) {
 				return o;
 			} else {
 				throw new Meteor.Error('invalid-field', prefix);
@@ -43,13 +43,13 @@ function filterObject(o, getCheckableSchemaFunc, ignore_off_schema_fields, prefi
 			if (_.isFunction(typeInfo)) {
 				thisAsObj[f] = o[f];
 			} else if (_.isObject(typeInfo) && _.isObject(o[f])) {
-				thisAsObj[f] = filterObject(o[f], getCheckableSchemaFunc, ignore_off_schema_fields, prefix === "" ? f : (prefix + '.' + f));
+				thisAsObj[f] = filterObject(o[f], getCheckableSchemaFunc, ignoreOffSchemaFields, prefix === "" ? f : (prefix + '.' + f));
 			} else {
 				throw new Meteor.Error('invalid-type-info', prefix === "" ? f : (prefix + '.' + f));
 			}
 		} else {
 			// Keep if in schema or not ignoring off schema fields
-			if (!ignore_off_schema_fields) {
+			if (!ignoreOffSchemaFields) {
 				thisAsObj[f] = o[f];
 			}
 		}
@@ -59,21 +59,21 @@ function filterObject(o, getCheckableSchemaFunc, ignore_off_schema_fields, prefi
 PackageUtilities.addImmutablePropertyFunction(CollectionTools, '_filterObject', filterObject);
 
 var baseConstructorPrototype = {
-	_asPlainObject: function _asPlainObject(ignore_off_schema_fields) {
-		return filterObject(this, _.bind(this.constructor.getCheckableSchema, this.constructor), ignore_off_schema_fields);
+	_asPlainObject: function _asPlainObject(ignoreOffSchemaFields) {
+		return filterObject(this, _.bind(this.constructor.getCheckableSchema, this.constructor), ignoreOffSchemaFields);
 	},
-	validate: function validate(ignore_off_schema_fields) {
-		var thisAsPlainObject = this._asPlainObject(ignore_off_schema_fields);
-		var ssContext = this.constructor.schema.newContext();
-		var result = ssContext.validate(thisAsPlainObject);
-		return {
-			result: result,
-			context: ssContext
-		};
-	},
-	validateWithCheck: function validateWithCheck(ignore_off_schema_fields) {
-		var thisAsPlainObject = this._asPlainObject(ignore_off_schema_fields);
-		return check(thisAsPlainObject, this.constructor.schema);
+	validate: function validate(useCheck, ignoreOffSchemaFields) {
+		var thisAsPlainObject = this._asPlainObject(!!ignoreOffSchemaFields);
+		if (!!useCheck) {
+			return check(thisAsPlainObject, this.constructor.schema);
+		} else {
+			var ssContext = this.constructor.schema.newContext();
+			var result = ssContext.validate(thisAsPlainObject);
+			return {
+				result: result,
+				context: ssContext
+			};
+		}
 	},
 };
 
@@ -91,42 +91,115 @@ function applyRateLimitItem(name, type, rateLimit, rateLimitInterval) {
 	}, rateLimit, rateLimitInterval);
 }
 
+function applyRateLimiting_SpecificInstance(name, type, options, defaultOptions) {
+	if (!!options.rateLimit && !!options.rateLimitInterval) {
+		if ((options.rateLimit > 0) && (options.rateLimit > 0)) {
+			applyRateLimitItem(name, type, options.rateLimit, options.rateLimitInterval);
+		}
+	} else {
+		if (!!defaultOptions.defaultRateLimit && !!defaultOptions.defaultRateLimitInterval) {
+			applyRateLimitItem(name, type, defaultOptions.defaultRateLimit, defaultOptions.defaultRateLimitInterval);
+		}
+	}
+}
+
 
 // create method and specify all elements of the method separately
 var __allMethodNames = [];
 PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', function createMethod(options) {
-	options = PackageUtilities.updateDefaultOptionsWithInput({
+	options = _.extend({
 		name: "some-method-name",
 		schema: {},
 		authenticationCheck: () => true, // (userId) => true,
 		unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
 		method: () => null,
+		useRestArgs: false,
+		finishers: [],
 		simulateNothing: false,
 		rateLimit: 10,
 		rateLimitInterval: 1000,
 	}, options);
 
 	if (__allMethodNames.indexOf(options.name) !== -1) {
-		__allMethodNames.push(options.name);
-	} else {
 		throw new Meteor.Error('repeated-method-name', options.name);
 	}
 
-	// method body
-	var method = function(...args) {
-		// check arguments
-		check(args, new SimpleSchema(options.schema));
-		this.unblock();
-
+	function doWork_viaApply(args) {
 		if ((!options.simulateNothing) || (!Meteor.isSimulation)) {
 			// authenticate
 			if (options.authenticationCheck(this.userId)) {
-				return options.method.apply(args);
+				// run operation
+				var ret = options.method.apply(this, args);
+
+				// run finishers
+				options.finishers.forEach(function(fn) {
+					if (fn instanceof Function) {
+						fn.apply({
+							context: this,
+							args: args,
+							result: ret
+						});
+					}
+				});
+
+				// return result
+				return ret;
 			} else {
 				throw new Meteor.Error('unauthorized');
 			}
 		}
-	};
+	}
+
+	// method body
+	var method;
+	if (_.isArray(options.schema)) {
+		// The usual methods with argument lists
+		method = function() {
+			// check arguments
+			check(arguments, Match.Any);
+
+			var args = Array.prototype.map.call(arguments, x => x);
+			if (!options.useRestArgs) {
+				if (args.length !== options.schema.length) {
+					throw new Meteor.Error('validation-error-schema-length-mismatch', EJSON.stringify({
+						args: args,
+						schema: options.schema.map(x => _.isFunction(x) ? x.name : x),
+					}));
+				}
+			} else {
+				if (options.schema.length === 0) {
+					throw new Meteor.Error('validation-error-invalid-schema-length-for-rest-args', EJSON.stringify({
+						useRestArgs: options.useRestArgs,
+						schema: options.schema.map(x => _.isFunction(x) ? x.name : x),
+					}));
+				}
+				if (args.length < options.schema.length - 1) {
+					throw new Meteor.Error('validation-error-schema-length-mismatch', EJSON.stringify({
+						args: args,
+						schema: options.schema.map(x => _.isFunction(x) ? x.name : x),
+					}));
+				}
+				var restArgs = args.splice(options.schema.length - 1);
+				args.push(restArgs);
+			}
+			_.forEach(args, function(v, idx) {
+				// check all properly
+				check(v, options.schema[idx]);
+			});
+
+			// do work: 
+			return _.bind(doWork_viaApply, this)(args);
+		};
+	} else {
+		// via destructuring...
+		method = function(args) {
+			// check arguments
+			check(args, new SimpleSchema(options.schema));
+
+			// do work
+			return _.bind(doWork_viaApply, this)([args]);
+		};
+	}
 
 	// declare method
 	Meteor.methods(_.object([
@@ -137,6 +210,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 	if (!!options.rateLimit && !!options.rateLimitInterval) {
 		applyRateLimitItem(options.name, 'method', options.rateLimit, options.rateLimitInterval);
 	}
+
+	// add to list of method names
+	__allMethodNames.push(options.name);
 });
 
 PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function build(options) {
@@ -167,7 +243,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	// Basic Constructor
 	////////////////////////////////////////////////////////////
 	var ConstructorFunction = _.extend(function(doc) {
-		_.extend(this, options.transform(doc));
+		return _.extend(this, options.transform(doc));
 	}, options.constructorExtension);
 
 
@@ -392,8 +468,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			selector: {},
 			selectOptions: {},
 			additionalAuthFunction: () => true,
-			rateLimit: null,
-			rateLimitInterval: null,
+			// rateLimit: null,
+			// rateLimitInterval: null,
 		}, _options);
 		if (Meteor.isServer) {
 			Meteor.publish(pubName, function() {
@@ -406,13 +482,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			});
 
 			// rate limit
-			if (!!_options.rateLimit && !!_options.rateLimitInterval) {
-				applyRateLimitItem(pubName, 'subscription', _options.rateLimit, _options.rateLimitInterval);
-			} else {
-				if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
-					applyRateLimitItem(pubName, 'subscription', options.defaultRateLimit, options.defaultRateLimitInterval);
-				}
-			}
+			applyRateLimiting_SpecificInstance(pubName, 'subscription', _options, options);
 		}
 		// Add default pubName
 		if (_.map(__publicationList, x => x).length === 0) {
@@ -449,13 +519,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			});
 
 			// rate limit
-			if (!!_options.rateLimit && !!_options.rateLimitInterval) {
-				applyRateLimitItem(pubName, 'subscription', _options.rateLimit, _options.rateLimitInterval);
-			} else {
-				if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
-					applyRateLimitItem(pubName, 'subscription', options.defaultRateLimit, options.defaultRateLimitInterval);
-				}
-			}
+			applyRateLimiting_SpecificInstance(pubName, 'subscription', _options, options);
 		}
 		// Add default pubName by Id
 		if (_.map(__publicationList, x => x).length === 0) {
@@ -510,119 +574,63 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}
 
 		var method;
+		var _schema;
 		if (_options.field === "") {
 			if (!_options.withParams) {
+				// add default document to collection
+				_schema = [];
 				method = function() {
 					this.unblock();
-					if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-						var doc = ConstructorFunction.getObjectWithDefaultValues();
-						var ret = collection.insert(doc);
-						_options.finishers.forEach(function(fn) {
-							if (fn instanceof Function) {
-								fn.apply({
-									context: this,
-									id: id,
-									doc: doc,
-									result: ret
-								});
-							}
-						});
-						return ret;
-					} else {
-						throw new Meteor.Error('unauthorized');
-					}
+					var doc = ConstructorFunction.getObjectWithDefaultValues();
+					return collection.insert(doc);
 				};
 			} else {
+				// add document (passed in) to collection
+				_schema = [String, schema];
 				method = function(id, doc) {
-					check(id, String);
-					check(doc, schema);
 					this.unblock();
-					if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-						var ret = collection.insert(doc);
-						_options.finishers.forEach(function(fn) {
-							if (fn instanceof Function) {
-								fn.apply({
-									context: this,
-									id: id,
-									doc: doc,
-									result: ret
-								});
-							}
-						});
-						return ret;
-					} else {
-						throw new Meteor.Error('unauthorized');
-					}
+					return collection.insert(doc);
 				};
 			}
 		} else {
 			if (!_options.withParams) {
+				// add default sub-document to array field
+				_schema = [String];
 				method = function(id) {
-					check(id, String);
 					this.unblock();
-					if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-						var subDoc = ConstructorFunction.getObjectWithDefaultValues(_options.field + '.$.');
-						var ret = collection.update(id, {
-							$push: _.object([
-								[_options.field, subDoc]
-							])
-						});
-						_options.finishers.forEach(function(fn) {
-							if (fn instanceof Function) {
-								fn.apply({
-									context: this,
-									id: id,
-									doc: subDoc,
-									result: ret
-								});
-							}
-						});
-						return ret;
-					} else {
-						throw new Meteor.Error('unauthorized');
-					}
+					var subDoc = ConstructorFunction.getObjectWithDefaultValues(_options.field + '.$.');
+					return collection.update(id, {
+						$push: _.object([
+							[_options.field, subDoc]
+						])
+					});
 				};
 			} else {
+				// add sub-document (passed in) to array field
+				_schema = [String, schema[_options.field][0]];
 				method = function(id, subDoc) {
-					check(id, String);
-					check(subDoc, schema[_options.field][0]);
 					this.unblock();
-					if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-						var ret = collection.update(id, {
-							$push: _.object([
-								[_options.field, subDoc]
-							])
-						});
-						_options.finishers.forEach(function(fn) {
-							if (fn instanceof Function) {
-								fn.apply({
-									context: this,
-									id: id,
-									doc: subDoc,
-									result: ret
-								});
-							}
-						});
-						return ret;
-					} else {
-						throw new Meteor.Error('unauthorized');
-					}
+					return collection.update(id, {
+						$push: _.object([
+							[_options.field, subDoc]
+						])
+					});
 				};
 			}
 		}
 
-		Meteor.methods(_.object([
-			[methodName, method]
-		]));
-
-		// rate limit
-		if (!!_options.rateLimit && !!_options.rateLimitInterval) {
-			applyRateLimitItem(methodName, 'method', _options.rateLimit, _options.rateLimitInterval);
-		} else {
-			if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
-				applyRateLimitItem(methodName, 'method', options.defaultRateLimit, options.defaultRateLimitInterval);
-			}
-		}
+		CollectionTools.createMethod({
+			name: methodName,
+			schema: _schema,
+			authenticationCheck: (uid) => options.globalAuthFunction(uid) && _options.additionalAuthFunction(uid),
+			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
+			method: method,
+			useRestArgs: false,
+			finishers: _options.finishers,
+			simulateNothing: false,
+			rateLimit: _options.rateLimit,
+			rateLimitInterval: _options.rateLimitInterval,
+		});
 
 		allMethods[_options.entryName] = methodName;
 		addMethods[_options.entryName] = methodName;
@@ -656,105 +664,61 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}
 
 		var method;
+		var schema;
 		if (_options.field === "") {
 			// remove document
+			schema = [String];
 			method = function(id) {
-				check(id, String);
 				this.unblock();
-				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-					var ret = collection.remove(id);
-					_options.finishers.forEach(function(fn) {
-						if (fn instanceof Function) {
-							fn.apply({
-								context: this,
-								id: id,
-								result: ret
-							});
-						}
-					});
-					return ret;
-				} else {
-					throw new Meteor.Error('unauthorized');
-				}
+				return collection.remove(id);
 			};
 		} else if (_.isArray(ConstructorFunction.getCheckableSchema()[_options.field])) {
 			// remove array entry
+			schema = [String, Match.isPositiveInteger];
 			method = function(id, idx) {
-				check(id, String);
-				check(idx, Match.isPositiveInteger);
 				this.unblock();
-				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-					var subDoc = collection.findOne(id, {
-						fields: _.object([
-							[_options.field, 1]
-						])
-					});
-					var ret;
-					if (!!subDoc) {
-						var arr = subDoc[_options.field];
-						if (arr.length > idx) {
-							arr.splice(idx, 1);
-							ret = collection.update(id, {
-								$set: _.object([
-									[_options.field, arr]
-								])
-							});
-						}
+				var subDoc = collection.findOne(id, {
+					fields: _.object([
+						[_options.field, 1]
+					])
+				});
+				if (!!subDoc) {
+					var arr = subDoc[_options.field];
+					if (arr.length > idx) {
+						arr.splice(idx, 1);
+						return collection.update(id, {
+							$set: _.object([
+								[_options.field, arr]
+							])
+						});
 					}
-					_options.finishers.forEach(function(fn) {
-						if (fn instanceof Function) {
-							fn.apply({
-								context: this,
-								id: id,
-								idx: idx,
-								result: ret
-							});
-						}
-					});
-					return ret;
-				} else {
-					throw new Meteor.Error('unauthorized');
 				}
 			};
 		} else {
 			// unset entire field
+			schema = [String];
 			method = function(id) {
-				check(id, String);
 				this.unblock();
-				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-					var ret = collection.update(id, {
-						$unset: _.object([
-							[_options.field, ""]
-						])
-					});
-					_options.finishers.forEach(function(fn) {
-						if (fn instanceof Function) {
-							fn.apply({
-								context: this,
-								id: id,
-								result: ret
-							});
-						}
-					});
-					return ret;
-				} else {
-					throw new Meteor.Error('unauthorized');
-				}
+				return collection.update(id, {
+					$unset: _.object([
+						[_options.field, ""]
+					])
+				});
 			};
 		}
 
-		Meteor.methods(_.object([
-			[methodName, method]
-		]));
-
-		// rate limit
-		if (!!_options.rateLimit && !!_options.rateLimitInterval) {
-			applyRateLimitItem(methodName, 'method', _options.rateLimit, _options.rateLimitInterval);
-		} else {
-			if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
-				applyRateLimitItem(methodName, 'method', options.defaultRateLimit, options.defaultRateLimitInterval);
-			}
-		}
+		CollectionTools.createMethod({
+			name: methodName,
+			schema: schema,
+			authenticationCheck: (uid) => options.globalAuthFunction(uid) && _options.additionalAuthFunction(uid),
+			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
+			method: method,
+			useRestArgs: false,
+			finishers: _options.finishers,
+			simulateNothing: false,
+			rateLimit: _options.rateLimit,
+			rateLimitInterval: _options.rateLimitInterval,
+		});
 
 		allMethods[_options.entryName] = methodName;
 		removeMethods[_options.field] = methodName;
@@ -789,56 +753,35 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		if (_.map(allMethods, x => x).indexOf(methodName) !== -1) {
 			throw new Meteor.Error('method-already-exists', methodName);
 		}
-		var method = function(id, value, ...args) {
-			check(id, String);
-			check(value, _options.type);
-			check(args, [Match.OneOf(Number, String)]);
-			this.unblock();
-			var fs = _options.field.split('.');
-			var argIdx = 0;
-			fs.forEach(function(f, idx) {
-				if (f === "*") {
-					fs[idx] = args[argIdx];
-					argIdx++;
-				}
-			});
-			var thisField = fs.join('.');
-			var setter = {
-				$set: _.object([
-					[thisField, value]
-				])
-			};
-			if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-				var ret = collection.update(id, setter);
-				_options.finishers.forEach(function(fn) {
-					if (fn instanceof Function) {
-						fn.apply({
-							context: this,
-							id: id,
-							value: value,
-							args: args,
-							result: ret
-						});
+
+		CollectionTools.createMethod({
+			name: methodName,
+			schema: [String, _options.type, [Match.OneOf(Number, String)]],
+			authenticationCheck: (uid) => options.globalAuthFunction(uid) && _options.additionalAuthFunction(uid),
+			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
+			method: function(id, value, ...args) {
+				var fs = _options.field.split('.');
+				var argIdx = 0;
+				fs.forEach(function(f, idx) {
+					if (f === "*") {
+						fs[idx] = args[argIdx];
+						argIdx++;
 					}
 				});
-				return ret;
-			} else {
-				throw new Meteor.Error('unauthorized');
-			}
-		};
-
-		Meteor.methods(_.object([
-			[methodName, method]
-		]));
-
-		// rate limit
-		if (!!_options.rateLimit && !!_options.rateLimitInterval) {
-			applyRateLimitItem(methodName, 'method', _options.rateLimit, _options.rateLimitInterval);
-		} else {
-			if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
-				applyRateLimitItem(methodName, 'method', options.defaultRateLimit, options.defaultRateLimitInterval);
-			}
-		}
+				var thisField = fs.join('.');
+				var setter = {
+					$set: _.object([
+						[thisField, value]
+					])
+				};
+				return collection.update(id, setter);
+			},
+			useRestArgs: true,
+			finishers: _options.finishers,
+			simulateNothing: false,
+			rateLimit: _options.rateLimit,
+			rateLimitInterval: _options.rateLimitInterval,
+		});
 
 		allMethods[_options.entryName] = methodName;
 		updateMethods[_options.field] = methodName;
@@ -865,49 +808,29 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			throw new Meteor.Error('method-already-exists', methodName);
 		}
 
-		var method = function(id, updates) {
-			check(id, String);
-			check(updates, Object);
-			_.forEach(updates, function(v, f) {
-				var typeInfo = ConstructorFunction.getTypeInfo(f);
-				if (!typeInfo) {
-					throw new Meteor.Error('invalid-field', f);
-				}
-				check(v, typeInfo.type);
-			});
-			this.unblock();
-			if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
-				var ret = collection.update(id, {
+		CollectionTools.createMethod({
+			name: methodName,
+			schema: [String, Object],
+			authenticationCheck: (uid) => options.globalAuthFunction(uid) && _options.additionalAuthFunction(uid),
+			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
+			method: function(id, updates) {
+				_.forEach(updates, function(v, f) {
+					var typeInfo = ConstructorFunction.getTypeInfo(f);
+					if (!typeInfo) {
+						throw new Meteor.Error('invalid-field', f);
+					}
+					check(v, typeInfo.type);
+				});
+				this.unblock();
+				return collection.update(id, {
 					$set: updates
 				});
-				_options.finishers.forEach(function(fn) {
-					if (fn instanceof Function) {
-						fn.apply({
-							context: this,
-							id: id,
-							updates: updates,
-							result: ret
-						});
-					}
-				});
-				return ret;
-			} else {
-				throw new Meteor.Error('unauthorized');
-			}
-		};
-
-		Meteor.methods(_.object([
-			[methodName, method]
-		]));
-
-		// rate limit
-		if (!!_options.rateLimit && !!_options.rateLimitInterval) {
-			applyRateLimitItem(methodName, 'method', _options.rateLimit, _options.rateLimitInterval);
-		} else {
-			if (!!options.defaultRateLimit && !!options.defaultRateLimitInterval) {
-				applyRateLimitItem(methodName, 'method', options.defaultRateLimit, options.defaultRateLimitInterval);
-			}
-		}
+			},
+			finishers: _options.finishers,
+			simulateNothing: false,
+			rateLimit: _options.rateLimit,
+			rateLimitInterval: _options.rateLimitInterval,
+		});
 
 		allMethods[_options.entryName] = methodName;
 		return methodName;
@@ -923,17 +846,28 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			finishers: [],
 			// rateLimit: null,
 			// rateLimitInterval: null,
+			excludeFieldsByName: [],
+			excludeFieldsByFieldPrefix: [],
 		}, _options);
 
 		var _schemaDesc = ConstructorFunction._schemaDescription;
-		_.forEach(_schemaDesc, function(v, k) {
-			ConstructorFunction.makeMethods_updater({
-				field: k,
-				type: ConstructorFunction.getCheckableSchema(k),
-				entryPrefix: _options.entryPrefix,
-				additionalAuthFunction: _options.additionalAuthFunction,
-				finishers: _options.finishers,
+		_.forEach(_schemaDesc, function(v, f) {
+			var createMethod = _options.excludeFieldsByName.indexOf(f) === -1;
+			_.forEach(_options.excludeFieldsByFieldPrefix, function(exclusionPrefix) {
+				if (exclusionPrefix === f.substr(0, exclusionPrefix.length)) {
+					createMethod = false;
+				}
 			});
+
+			if (createMethod) {
+				ConstructorFunction.makeMethods_updater({
+					field: f,
+					type: ConstructorFunction.getCheckableSchema(f),
+					entryPrefix: _options.entryPrefix,
+					additionalAuthFunction: _options.additionalAuthFunction,
+					finishers: _options.finishers,
+				});
+			}
 		});
 	});
 
