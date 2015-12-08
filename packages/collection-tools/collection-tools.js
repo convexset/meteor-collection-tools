@@ -158,7 +158,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 			// check arguments
 			check(arguments, Match.Any);
 
-			var args = Array.prototype.map.call(arguments, x => x);
+			var args = _.toArray(arguments);
 			if (!options.useRestArgs) {
 				if (args.length !== options.schema.length) {
 					throw new Meteor.Error('validation-error-schema-length-mismatch', EJSON.stringify({

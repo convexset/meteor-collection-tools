@@ -15,7 +15,7 @@ Package.onUse(function(api) {
 			'ecmascript', 'underscore', 'check', 'ejson',
 			'mongo', 'ddp-rate-limiter',
 			'aldeed:simple-schema@1.4.0',
-			'convexset:match-extensions@0.1.1', 'convexset:package-utils@0.1.3',
+			'convexset:match-extensions@0.1.1', 'convexset:package-utils@0.1.8',
 		]
 	);
 	api.use([], 'server');
