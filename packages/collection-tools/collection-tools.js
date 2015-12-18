@@ -866,13 +866,15 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			});
 
 			if (createMethod) {
-				ConstructorFunction.makeMethods_updater({
-					field: f,
-					type: ConstructorFunction.getCheckableSchema(f),
-					entryPrefix: _options.entryPrefix,
-					additionalAuthFunction: _options.additionalAuthFunction,
-					finishers: _options.finishers,
-				});
+				if (f !== "_id") {
+					ConstructorFunction.makeMethods_updater({
+						field: f,
+						type: ConstructorFunction.getCheckableSchema(f),
+						entryPrefix: _options.entryPrefix,
+						additionalAuthFunction: _options.additionalAuthFunction,
+						finishers: _options.finishers,
+					});
+				}
 			}
 		});
 	});
