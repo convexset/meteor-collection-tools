@@ -1,6 +1,6 @@
 Package.describe({
 	name: 'convexset:collection-tools',
-	version: '0.0.5',
+	version: '0.0.6',
 	summary: 'A tool for \"unifying\" collections, Meteor methods, schemas and transformations',
 	git: 'https://github.com/convexset/meteor-collection-tools',
 	documentation: '../../README.md'

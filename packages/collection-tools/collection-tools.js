@@ -353,7 +353,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				if ((!item.optional) && (typeof item.defaultValue === "undefined")) {
 					throw new Meteor.Error('default-value-not-found', key);
 				}
-				obj[key] = _.isFunction(item.defaultValue) ? item.defaultValue() : item.defaultValue;
+
+				if (typeof item.defaultValue !== "undefined") {
+					obj[key] = _.isFunction(item.defaultValue) ? item.defaultValue() : item.defaultValue;
+				}
 			}
 		});
 		return (prefix === "") ? new ConstructorFunction(obj) : obj;
@@ -543,7 +546,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	var updateMethods = {};
 	var removeMethods = {};
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'allMethods', allMethods);
-	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'addMethods', removeMethods);
+	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'addMethods', addMethods);
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'updateMethods', updateMethods);
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'removeMethods', removeMethods);
 
