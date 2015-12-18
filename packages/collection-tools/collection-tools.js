@@ -133,7 +133,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 
 				// run finishers
 				options.finishers.forEach(function(fn) {
-					if (fn instanceof Function) {
+					if (_.isFunction(fn)) {
 						fn.apply({
 							context: this,
 							args: args,
@@ -228,7 +228,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		methodPrefix: 'collections/',
 		defaultRateLimit: 10,
 		defaultRateLimitInterval: 1000,
-	}, options);
+	}, options, false);
 	if (options.collectionName === "") {
 		options.collectionName = null;
 	}
@@ -242,17 +242,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	////////////////////////////////////////////////////////////
 	// Basic Constructor
 	////////////////////////////////////////////////////////////
-	var ConstructorFunction = _.extend(function(doc) {
+	var ConstructorFunction = function(doc) {
 		return _.extend(this, options.transform(doc));
-	}, options.constructorExtension);
-
-
-	////////////////////////////////////////////////////////////
-	// The Prototype
-	////////////////////////////////////////////////////////////
-	ConstructorFunction.prototype = _.extend(Object.create(baseConstructorPrototype), {
-		constructor: ConstructorFunction,
-	}, options.prototypeExtension);
+	};
 
 
 	////////////////////////////////////////////////////////////
@@ -277,6 +269,20 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			remove: () => true
 		});
 	}
+
+
+	////////////////////////////////////////////////////////////
+	// Constructor Extension
+	////////////////////////////////////////////////////////////
+	_.extend(ConstructorFunction, _.isFunction(options.constructorExtension) ? options.constructorExtension(ConstructorFunction, collection) : options.constructorExtension);
+
+
+	////////////////////////////////////////////////////////////
+	// The Prototype
+	////////////////////////////////////////////////////////////
+	ConstructorFunction.prototype = _.extend(Object.create(baseConstructorPrototype), {
+		constructor: ConstructorFunction,
+	}, _.isFunction(options.prototypeExtension) ? options.prototypeExtension(ConstructorFunction, collection) : options.prototypeExtension);
 
 
 	////////////////////////////////////////////////////////////
@@ -347,7 +353,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				if ((!item.optional) && (typeof item.defaultValue === "undefined")) {
 					throw new Meteor.Error('default-value-not-found', key);
 				}
-				obj[key] = (item.defaultValue instanceof Function) ? item.defaultValue() : item.defaultValue;
+				obj[key] = _.isFunction(item.defaultValue) ? item.defaultValue() : item.defaultValue;
 			}
 		});
 		return (prefix === "") ? new ConstructorFunction(obj) : obj;
@@ -439,7 +445,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		var selectedSchemaDesc = selectedSchema._schema;
 		var filteredObject = {};
 		for (var k in selectedSchemaDesc) {
-			if (call_functions && (o[k] instanceof Function)) {
+			if (call_functions && _.isFunction(o[k])) {
 				filteredObject[k] = o[k]();
 			} else {
 				filteredObject[k] = o[k];

@@ -149,7 +149,7 @@ Tinytest.add("[CollectionTools] constructor.filterWithTopLevelSchema with functi
 	};
 	var o_noCallFn = Thing.filterWithTopLevelSchema(obj, false).filteredObject;
 	var o_callFn = Thing.filterWithTopLevelSchema(obj, true).filteredObject;
-	test.isTrue(o_noCallFn.num instanceof Function, "o_noCallFn.name instanceof Function");
+	test.isTrue(_.isFunction(o_noCallFn.num), "_.isFunction(o_noCallFn.num)");
 	test.equal(o_callFn.num, 888, "o_callFn.num === 888");
 	test.isTrue(objKeyMatch(o_noCallFn, ['name', 'num']), 'o_noCallFn keys: name, num');
 	test.isTrue(objKeyMatch(o_callFn, ['name', 'num']), 'o_noCallFn keys: name, num');
