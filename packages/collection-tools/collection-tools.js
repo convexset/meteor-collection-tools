@@ -94,10 +94,12 @@ function applyRateLimitItem(name, type, rateLimit, rateLimitInterval) {
 function applyRateLimiting_SpecificInstance(name, type, options, defaultOptions) {
 	if (!!options.rateLimit && !!options.rateLimitInterval) {
 		if ((options.rateLimit > 0) && (options.rateLimit > 0)) {
+			console.log(name, type, options.rateLimit, options.rateLimitInterval)
 			applyRateLimitItem(name, type, options.rateLimit, options.rateLimitInterval);
 		}
 	} else {
 		if (!!defaultOptions.defaultRateLimit && !!defaultOptions.defaultRateLimitInterval) {
+			console.log(name, type, defaultOptions.defaultRateLimit, defaultOptions.defaultRateLimitInterval)
 			applyRateLimitItem(name, type, defaultOptions.defaultRateLimit, defaultOptions.defaultRateLimitInterval);
 		}
 	}
@@ -512,10 +514,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			applyRateLimiting_SpecificInstance(pubName, 'subscription', _options, options);
 		}
 		// Add default pubName
-		if (_.map(__publicationList, x => x).length === 0) {
+		if (Object.keys(__publicationList).length === 0) {
 			PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'defaultPublication', pubName);
 		}
-		__publicationList[pubName] = pubName;
+		__publicationList[pubName] = _options;
 	});
 
 
@@ -552,7 +554,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		if (_.map(__publicationList, x => x).length === 0) {
 			PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'defaultPublication_byId', pubName);
 		}
-		__publicationList[pubName] = pubName;
+		__publicationList[pubName] = _options;
 	});
 
 
