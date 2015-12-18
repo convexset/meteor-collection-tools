@@ -94,12 +94,10 @@ function applyRateLimitItem(name, type, rateLimit, rateLimitInterval) {
 function applyRateLimiting_SpecificInstance(name, type, options, defaultOptions) {
 	if (!!options.rateLimit && !!options.rateLimitInterval) {
 		if ((options.rateLimit > 0) && (options.rateLimit > 0)) {
-			console.log(name, type, options.rateLimit, options.rateLimitInterval)
 			applyRateLimitItem(name, type, options.rateLimit, options.rateLimitInterval);
 		}
 	} else {
 		if (!!defaultOptions.defaultRateLimit && !!defaultOptions.defaultRateLimitInterval) {
-			console.log(name, type, defaultOptions.defaultRateLimit, defaultOptions.defaultRateLimitInterval)
 			applyRateLimitItem(name, type, defaultOptions.defaultRateLimit, defaultOptions.defaultRateLimitInterval);
 		}
 	}
