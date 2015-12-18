@@ -219,6 +219,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 
 	options = PackageUtilities.updateDefaultOptionsWithInput({
 		collectionName: "",
+		constructorName: "",
 		setRestrictiveAllowDenyDefaults: true,
 		schema: {},
 		prototypeExtension: {},
@@ -242,9 +243,26 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	////////////////////////////////////////////////////////////
 	// Basic Constructor
 	////////////////////////////////////////////////////////////
-	var ConstructorFunction = function(doc) {
-		return _.extend(this, options.transform(doc));
-	};
+	var ConstructorFunction = (function() {
+		// for nice constructor names
+		var name = (!!options.constructorName) ? options.constructorName : options.collectionName;
+		var fn;
+		var s = 'fn = function ';
+		Array.prototype.map.call(name, function(c, idx) {
+			if ((c === '_') || (('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || ((idx !== 0) && ('0' <= c) && (c <= '9'))) {
+				s += c;
+			}
+		});
+		s += '(doc)';
+		s += '{return _.extend(this, options.transform(doc));}';
+		// jshint evil: true
+		eval(s);
+		// jshint evil: false
+		return fn;
+	})();
+	// var ConstructorFunction = function(doc) {
+	// 	return _.extend(this, options.transform(doc));
+	// };
 
 
 	////////////////////////////////////////////////////////////
