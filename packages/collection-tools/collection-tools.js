@@ -543,6 +543,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}, _options);
 		if (Meteor.isServer) {
 			Meteor.publish(pubName, function(id) {
+				check(id, String);
 				this.unblock();
 				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
 					return collection.find(_.object([
