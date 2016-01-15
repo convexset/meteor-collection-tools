@@ -248,13 +248,21 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		var name = (!!options.constructorName) ? options.constructorName : options.collectionName;
 		var fn;
 		var s = 'fn = function ';
-		Array.prototype.map.call(name, function(c, idx) {
+		var constructorName = '';
+		Array.prototype.forEach.call(name, function(c, idx) {
 			if ((c === '_') || (('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || ((idx !== 0) && ('0' <= c) && (c <= '9'))) {
 				s += c;
+				constructorName += c;
 			}
 		});
-		s += '(doc)';
-		s += '{return _.extend(this, options.transform(doc));}';
+		s += '(doc) {' + '\n';
+		if (constructorName.length > 0) {
+			// add protection in the form of...
+			// if (!(this instanceof constructor)) { throw "improper-constructor-invocation"; }'
+			s += '    if (!(this instanceof ' + constructorName + ')) { throw "improper-constructor-invocation"; }' + '\n';
+		}
+		s += '    return _.extend(this, options.transform(doc));' + '\n';
+		s += '}' + '\n';
 		// jshint evil: true
 		eval(s);
 		// jshint evil: false
