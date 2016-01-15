@@ -710,7 +710,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			};
 		} else if (_.isArray(ConstructorFunction.getCheckableSchema()[_options.field])) {
 			// remove array entry
-			schema = [String, Match.isPositiveInteger];
+			schema = [String, Match.isNonNegativeInteger];
 			method = function(id, idx) {
 				this.unblock();
 				var subDoc = collection.findOne(id, {
