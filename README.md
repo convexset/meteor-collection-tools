@@ -30,45 +30,91 @@ Begin by calling:
 
 ```javascript
 ConstructorFunction = CollectionTools.build({
-	collectionName: "Collection_Name",
+    collectionName: "Collection_Name",
+    constructorName: "ConstructorName",
 
-	// Whether to set "allow nothing deny everything" for collection
-	setRestrictiveAllowDenyDefaults: true,
+    // Whether to set "allow nothing deny everything" for collection
+    setRestrictiveAllowDenyDefaults: true,
 
-	// The schema in "SimpleSchema notation"
-	// see: https://github.com/aldeed/meteor-simple-schema
-	schema: {      
-		field1: {
-			type: TypeOfField1,
-			...
-		},
-		field2: {
-			type: TypeOfField2,
-			...
-		}
-	},
+    // The schema in "SimpleSchema notation"
+    // see: https://github.com/aldeed/meteor-simple-schema
+    schema: {
+        field1: {
+            type: TypeOfField1,
+            ...
+        },
+        field2: {
+            type: TypeOfField2,
+            ...
+        }
+    },
 
-	// additional extensions to the prototype
-	prototypeExtension: {},
+    // additional extensions to the prototype
+    prototypeExtension: {
+        somePrototypeMethod: function() {
+            // ...
+        },
+        somePrototypeValue: 10
+        // ...
+    },
+    // Alternatively, if one wishes to use the constructor and/or collection:
+    /*
+    prototypeExtension: function(constructorFunction, collection) {
+        return {
+            getSimilar: function() {
+                return collection.find({
+                    thing: this.thing
+                }),
+            },
+            makeSibling: function(name) {
+                return new constructorFunction({
+                    name: name,
+                    parent: this.parent,
+                });
+            },
+        };
+    },
+    */
 
-	// additional extensions on the constructor
-	constructorExtension: {},
+    // additional extensions on the constructor
+    constructorExtension: {
+        someMethodSittingOnTheConstructor: function() {
+            // ...
+        },
+        someValueSittingOnTheConstructor: "Hello!"
+        // ...
+    },
+    // Alternatively, if one wishes to use the constructor and/or collection:
+    /*
+    constructorExtension: function(constructorFunction, collection) {
+        return {
+            getAll: function() {
+                return collection.find(),
+            },
+            makeTeam: function(n) {
+                return _.range(n).map(idx => new constructorFunction({
+                    name: "Member " + idx,
+                }));
+            },
+        };
+    },
+    */
 
-	// transformation for the collection
-	// See: "transform option" on http://docs.meteor.com/#/full/mongo_collection
-	transform: x => x,
+    // transformation for the collection
+    // See: "transform option" on http://docs.meteor.com/#/full/mongo_collection
+    transform: x => x,
 
-	// An authentication function for generated Meteor methods
-	// It takes a userId and should return true if authorized and false otherwise
-	globalAuthFunction: () => true,
+    // An authentication function for generated Meteor methods
+    // It takes a userId and should return true if authorized and false otherwise
+    globalAuthFunction: (userId) => true,
 
-	// The default prefix for generated Meteor methods
-	methodPrefix: "collections/collection-name/",
+    // The default prefix for generated Meteor methods
+    methodPrefix: "collections/collection-name/",
 
-	// Default rate limiting parameters for publications and methods
-	defaultRateLimit: 10,            // (default: 10; null to not set)
-	defaultRateLimitInterval: 1000,  // (default: 1000; null to not set)
-})
+    // Default rate limiting parameters for publications and methods
+    defaultRateLimit: 10, // (default: 10; null to not set)
+    defaultRateLimitInterval: 1000, // (default: 1000; null to not set)
+});
 ```
 
 ### Instance Methods/Properties
@@ -172,36 +218,36 @@ See inline comments
 
 ```javascript
 CollectionTools.createMethod({
-	name: "some-method-name",
+    name: "some-method-name",
 
-	// schema in SimpleSchema format
-	schema: {
-		_id: {
-			type: String,
-			regEx: /^[0-9a-zA-Z]{17,24}$/
-		},
-		field2: {
-			type: TypeOfField2,
-			...
-		}
-	},
+    // schema in SimpleSchema format
+    schema: {
+        _id: {
+            type: String,
+            regEx: /^[0-9a-zA-Z]{17,24}$/
+        },
+        field2: {
+            type: TypeOfField2,
+            ...
+        }
+    },
 
-	// Authentication check function
-	// a function that takes a user id (via this.userId) and returns true if
-	// authorized and false otherwise
-	authenticationCheck: () => true,  // (userId) => true,
-	// a string or function that maps (options, userId) to the unautorized use message 
-	unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
-	// unauthorizedMessage: "unauthorized",
+    // Authentication check function
+    // a function that takes a user id (via this.userId) and returns true if
+    // authorized and false otherwise
+    authenticationCheck: () => true,  // (userId) => true,
+    // a string or function that maps (options, userId) to the unautorized use message 
+    unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
+    // unauthorizedMessage: "unauthorized",
 
 
-	// the method body
-	method: function removeItem(_id) {
-		return SomeCollection.remove(_id);
-	},
+    // the method body
+    method: function removeItem(_id) {
+        return SomeCollection.remove(_id);
+    },
 
-	// whether to use "rest arguments"  (default: `false`)
-	useRestArgs: false,
+    // whether to use "rest arguments"  (default: `false`)
+    useRestArgs: false,
 
    // finishers: an array of functions to be called on operation completion
    // each function will be bound to an object with an object with the
@@ -210,12 +256,12 @@ CollectionTools.createMethod({
    //  - `args`: arguments passed into method
    //  - `result`: return code of method
 
-	// if true, will run no simulation
-	// (useful if server-only functions are called)
-	simulateNothing: false,
+    // if true, will run no simulation
+    // (useful if server-only functions are called)
+    simulateNothing: false,
 
-	// Rate limiting parameters for publications and methods
-	rateLimit: 10,            // (default: 10; null to not set)
-	rateLimitInterval: 1000,  // (default: 1000; null to not set)
+    // Rate limiting parameters for publications and methods
+    rateLimit: 10,            // (default: 10; null to not set)
+    rateLimitInterval: 1000,  // (default: 1000; null to not set)
 });
 ```
