@@ -105,8 +105,9 @@ ConstructorFunction = CollectionTools.build({
     transform: x => x,
 
     // An authentication function for generated Meteor methods
-    // It takes a userId and should return true if authorized and false otherwise
-    globalAuthFunction: (userId) => true,
+    // It takes a userId and documentId (except for makePublication)
+    // and should return true if authorized and false otherwise
+    globalAuthFunction: (userId, documentId) => true,
 
     // The default prefix for generated Meteor methods
     methodPrefix: "collections/collection-name/",
@@ -154,13 +155,13 @@ ConstructorFunction = CollectionTools.build({
  - `makePublication(pubName, options)`: creates a publication named `pubName` with the following options
    * `selector`: [selector](http://docs.meteor.com/#/full/find) (default: `{}`)
    * `selectOptions`: [selector options](http://docs.meteor.com/#/full/find) (default: `{}`)
-   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `alternativeAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `(userId) => true`)
    * `rateLimit`: rate limiting count (default: `null`)
    * `rateLimitInterval`: rate limiting interval (default: `null`)
  - `makePublication_getById(pubName, options)`: creates a publication named `pubName` that selects a document (documents)
    * `idField`: name of the id field (default: `_id`)
    * `selectOptions`: [selector options](http://docs.meteor.com/#/full/find) (default: `{}`)
-   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `rateLimit`: rate limiting count (default: `null`)
    * `rateLimitInterval`: rate limiting interval (default: `null`)
 
@@ -175,7 +176,7 @@ ConstructorFunction = CollectionTools.build({
    * `entryPrefix`: entry prefix of method (default: 'add')
    * `field`: the field in question; `""` to add an entire document (default: `""`); 
    * `withParams`: true to add an entire document/sub-document as provided; false to use default values (default: `false`),
-   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
@@ -183,20 +184,20 @@ ConstructorFunction = CollectionTools.build({
  - `makeMethod_remove(options)`: creates a removal method with signature `function(id)` (for removal of entire documents or unsetter of fields) or (`function(id, idx)` for arrays)
    * `entryPrefix`: entry prefix of method (default: 'remove')
    * `field`: `""` for removal of an entire document; for fields that are specified and are arrays, the method takes an additional parameter (the index) and removes an array element, otherwise, the entire field is unset (default: `""`)
-   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
 
  - `makeMethods_updater(options)`: creates generic field-specific updaters with signature `function(id, value, ...args)`
    * `entryName`: entry name (default: `'general-update'`)
-   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
  - `makeGenericMethod_updaters(options)`: creates top-level generic field-specific updaters with signature `function(id, value, ...args)` (see `makeMethods_updater` above) with the following options
    * `entryPrefix`: prefix for methods
-   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
@@ -204,7 +205,7 @@ ConstructorFunction = CollectionTools.build({
    * `excludeFieldsByFieldPrefix`: fields to exclude (e.g.: `"friends.$"` excludes fields like `"friends.$.name"` and `"friends.$.particulars.name"`)
  - `makeMethods_generalUpdater(options)`: creates a monolithic updater for a document with the signature `function(id, updates)`
    * `entryName`: entry name (default: `'general-update'`)
-   * `additionalAuthFunction`: authentication function mapping user id (`this.userId`) to a `Boolean` indicating whether the user is authorized (default: `() => true`)
+   * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)

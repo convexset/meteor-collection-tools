@@ -110,8 +110,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 	options = _.extend({
 		name: "some-method-name",
 		schema: {},
-		authenticationCheck: () => true, // (userId) => true,
-		unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
+		authenticationCheck: (userId, id) => true,
+		unauthorizedMessage: (opts, userId, id) => "unauthorized for " + userId + ": " + opts.name,
 		method: () => null,
 		useRestArgs: false,
 		finishers: [],
@@ -127,7 +127,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 	function doWork_viaApply(args) {
 		if ((!options.simulateNothing) || (!Meteor.isSimulation)) {
 			// authenticate
-			if (options.authenticationCheck(this.userId)) {
+			if (!_.isFunction(options.authenticationCheck) || options.authenticationCheck(Meteor.userId(), args[0])) {
 				// run operation
 				var ret = options.method.apply(this, args);
 
@@ -145,7 +145,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 				// return result
 				return ret;
 			} else {
-				throw new Meteor.Error('unauthorized');
+				throw new Meteor.Error('unauthorized', options.unauthorizedMessage(options, this.userId, args[0]) );
 			}
 		}
 	}
@@ -225,7 +225,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		prototypeExtension: {},
 		constructorExtension: {},
 		transform: x => x,
-		globalAuthFunction: () => true,
+		globalAuthFunction: (userId, documentId) => true,
 		methodPrefix: 'collections/',
 		defaultRateLimit: 10,
 		defaultRateLimitInterval: 1000,
@@ -499,19 +499,20 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		if (typeof __publicationList[pubName] !== "undefined") {
 			throw new Meteor.Error('publication-already-exists', pubName);
 		}
-		_options = PackageUtilities.updateDefaultOptionsWithInput({
+		_options = _.extend({
 			selector: {},
 			selectOptions: {},
-			additionalAuthFunction: () => true,
+			alternativeAuthFunction: null,
 			// rateLimit: null,
 			// rateLimitInterval: null,
 		}, _options);
 		if (Meteor.isServer) {
 			Meteor.publish(pubName, function() {
 				this.unblock();
-				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
+				if (_.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction(this.userId) : options.globalAuthFunction(this.userId)) {
 					return collection.find(_options.selector, _options.selectOptions);
 				} else {
+					this.ready();
 					throw new Meteor.Error('unauthorized');
 				}
 			});
@@ -534,10 +535,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		if (typeof __publicationList[pubName] !== "undefined") {
 			throw new Meteor.Error('publication-already-exists', pubName);
 		}
-		_options = PackageUtilities.updateDefaultOptionsWithInput({
+		_options = _.extend({
 			idField: "_id",
 			selectOptions: {},
-			additionalAuthFunction: () => true,
+			alternativeAuthFunction: null,
 			rateLimit: null,
 			rateLimitInterval: null,
 		}, _options);
@@ -545,11 +546,12 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			Meteor.publish(pubName, function(id) {
 				check(id, String);
 				this.unblock();
-				if (options.globalAuthFunction(this.userId) && _options.additionalAuthFunction(this.userId)) {
+				if (_.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction(this.userId, id) : options.globalAuthFunction(this.userId, id)) {
 					return collection.find(_.object([
 						[_options.idField, id]
 					]), _options.selectOptions);
 				} else {
+					this.ready();
 					throw new Meteor.Error('unauthorized');
 				}
 			});
@@ -581,11 +583,11 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		if (!_options) {
 			_options = {};
 		}
-		_options = PackageUtilities.updateDefaultOptionsWithInput({
+		_options = _.extend({
 			entryPrefix: 'add',
 			withParams: false,
 			field: "",
-			additionalAuthFunction: () => true,
+			alternativeAuthFunction: null,
 			finishers: [],
 			// rateLimit: null,
 			// rateLimitInterval: null,
@@ -658,7 +660,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		CollectionTools.createMethod({
 			name: methodName,
 			schema: _schema,
-			authenticationCheck: (uid) => options.globalAuthFunction(uid) && _options.additionalAuthFunction(uid),
+			authenticationCheck: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
 			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
 			method: method,
 			useRestArgs: false,
@@ -677,10 +679,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		if (!_options) {
 			_options = {};
 		}
-		_options = PackageUtilities.updateDefaultOptionsWithInput({
+		_options = _.extend({
 			entryPrefix: 'remove',
 			field: "",
-			additionalAuthFunction: () => true,
+			alternativeAuthFunction: null,
 			finishers: [],
 			// rateLimit: null,
 			// rateLimitInterval: null,
@@ -746,7 +748,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		CollectionTools.createMethod({
 			name: methodName,
 			schema: schema,
-			authenticationCheck: (uid) => options.globalAuthFunction(uid) && _options.additionalAuthFunction(uid),
+			authenticationCheck: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
 			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
 			method: method,
 			useRestArgs: false,
@@ -769,7 +771,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			field: '',
 			type: Function,
 			entryPrefix: 'update',
-			additionalAuthFunction: () => true,
+			alternativeAuthFunction: null,
 			finishers: [],
 			// rateLimit: null,
 			// rateLimitInterval: null,
@@ -793,7 +795,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		CollectionTools.createMethod({
 			name: methodName,
 			schema: [String, _options.type, [Match.OneOf(Number, String)]],
-			authenticationCheck: (uid) => options.globalAuthFunction(uid) && _options.additionalAuthFunction(uid),
+			authenticationCheck: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
 			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
 			method: function(id, value, ...args) {
 				var fs = _options.field.split('.');
@@ -830,7 +832,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}
 		_options = _.extend({
 			entryName: 'general-update',
-			additionalAuthFunction: () => true,
+			alternativeAuthFunction: null,
 			finishers: [],
 			// rateLimit: null,
 			// rateLimitInterval: null,
@@ -847,7 +849,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		CollectionTools.createMethod({
 			name: methodName,
 			schema: [String, Object],
-			authenticationCheck: (uid) => options.globalAuthFunction(uid) && _options.additionalAuthFunction(uid),
+			authenticationCheck: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
 			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
 			method: function(id, updates) {
 				_.forEach(updates, function(v, f) {
@@ -878,7 +880,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}
 		_options = _.extend({
 			entryPrefix: 'update-gen',
-			additionalAuthFunction: () => true,
+			alternativeAuthFunction: null,
 			finishers: [],
 			// rateLimit: null,
 			// rateLimitInterval: null,
@@ -901,7 +903,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 						field: f,
 						type: ConstructorFunction.getCheckableSchema(f),
 						entryPrefix: _options.entryPrefix,
-						additionalAuthFunction: _options.additionalAuthFunction,
+						alternativeAuthFunction: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
 						finishers: _options.finishers,
 					});
 				}
