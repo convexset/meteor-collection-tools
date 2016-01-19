@@ -109,6 +109,12 @@ ConstructorFunction = CollectionTools.build({
     // and should return true if authorized and false otherwise
     globalAuthFunction: (userId, documentId) => true,
 
+    // ... alteratively, if the constructor and/or collection are needed to
+    // construct the global auth function, the following is available, and will
+    // be called to override any thing passed as globalAuthFunction
+    // globalAuthFunction_fromConstructorAndCollection: (cf, col) => ((userId, documentId) => true)
+    // it defaults to null
+
     // The default prefix for generated Meteor methods
     methodPrefix: "collections/collection-name/",
 

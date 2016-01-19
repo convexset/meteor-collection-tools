@@ -226,6 +226,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		constructorExtension: {},
 		transform: x => x,
 		globalAuthFunction: (userId, documentId) => true,
+		globalAuthFunction_fromConstructorAndCollection: null,
 		methodPrefix: 'collections/',
 		defaultRateLimit: 10,
 		defaultRateLimitInterval: 1000,
@@ -309,6 +310,14 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	ConstructorFunction.prototype = _.extend(Object.create(baseConstructorPrototype), {
 		constructor: ConstructorFunction,
 	}, _.isFunction(options.prototypeExtension) ? options.prototypeExtension(ConstructorFunction, collection) : options.prototypeExtension);
+
+
+	////////////////////////////////////////////////////////////
+	// Global Auth Function
+	////////////////////////////////////////////////////////////
+	if (_.isFunction(options.globalAuthFunction_fromConstructorAndCollection)) {
+		options.globalAuthFunction = options.globalAuthFunction_fromConstructorAndCollection(ConstructorFunction, collection);
+	}
 
 
 	////////////////////////////////////////////////////////////
