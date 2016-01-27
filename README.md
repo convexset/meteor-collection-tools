@@ -235,6 +235,7 @@ ConstructorFunction = CollectionTools.build({
    * `withParams`: true to add an entire document/sub-document as provided; false to use default values (default: `false`),
    * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
+   * `serverOnly`: define only on server if `true` (default: `false`)
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
 
@@ -243,6 +244,7 @@ ConstructorFunction = CollectionTools.build({
    * `field`: `""` for removal of an entire document; for fields that are specified and are arrays, the method takes an additional parameter (the index) and removes an array element, otherwise, the entire field is unset (default: `""`)
    * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
+   * `serverOnly`: define only on server if `true` (default: `false`)
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
 
@@ -250,12 +252,14 @@ ConstructorFunction = CollectionTools.build({
    * `entryName`: entry name (default: `'general-update'`)
    * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
+   * `serverOnly`: define only on server if `true` (default: `false`)
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
  - `makeGenericMethod_updaters(options)`: creates top-level generic field-specific updaters with signature `function(id, value, ...args)` (see `makeMethods_updater` above) with the following options
    * `entryPrefix`: prefix for methods
    * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
+   * `serverOnly`: define only on server if `true` (default: `false`)
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `considerFieldsByName`: fields to consider for inclusion (e.g.: `"friends.$"`); exclusion via `excludeFieldsByName` takes precedence `excludeFieldsByFieldPrefix`
@@ -267,6 +271,7 @@ ConstructorFunction = CollectionTools.build({
    * `entryName`: entry name (default: `'general-update'`)
    * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
+   * `serverOnly`: define only on server if `true` (default: `false`)
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
 
@@ -310,16 +315,15 @@ CollectionTools.createMethod({
     // whether to use "rest arguments"  (default: `false`)
     useRestArgs: false,
 
-   // finishers: an array of functions to be called on operation completion
-   // each function will be bound to an object with an object with the
-   // following content (default: `[]`),
-   //  - `context`: the `this` of the Meteor method context
-   //  - `args`: arguments passed into method
-   //  - `result`: return code of method
+    // finishers: an array of functions to be called on operation completion
+    // each function will be bound to an object with an object with the
+    // following content (default: `[]`),
+    //  - `context`: the `this` of the Meteor method context
+    //  - `args`: arguments passed into method
+    //  - `result`: return code of method
 
-    // if true, will run no simulation
-    // (useful if server-only functions are called)
-    simulateNothing: false,
+    // if true, will define method only on server
+    serverOnly: false,
 
     // Rate limiting parameters for publications and methods
     rateLimit: 10,            // (default: 10; null to not set)

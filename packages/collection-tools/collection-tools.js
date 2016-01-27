@@ -118,7 +118,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 		method: () => null,
 		useRestArgs: false,
 		finishers: [],
-		simulateNothing: false,
+		serverOnly: false,
 		rateLimit: 10,
 		rateLimitInterval: 1000,
 	}, options);
@@ -128,28 +128,26 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 	}
 
 	function doWork_viaApply(args) {
-		if ((!options.simulateNothing) || (!Meteor.isSimulation)) {
-			// authenticate
-			if (!_.isFunction(options.authenticationCheck) || options.authenticationCheck(Meteor.userId(), args[0])) {
-				// run operation
-				var ret = options.method.apply(this, args);
+		// authenticate
+		if (!_.isFunction(options.authenticationCheck) || options.authenticationCheck(Meteor.userId(), args[0])) {
+			// run operation
+			var ret = options.method.apply(this, args);
 
-				// run finishers
-				options.finishers.forEach(function(fn) {
-					if (_.isFunction(fn)) {
-						fn.apply({
-							context: this,
-							args: args,
-							result: ret
-						});
-					}
-				});
+			// run finishers
+			options.finishers.forEach(function(fn) {
+				if (_.isFunction(fn)) {
+					fn.apply({
+						context: this,
+						args: args,
+						result: ret
+					});
+				}
+			});
 
-				// return result
-				return ret;
-			} else {
-				throw new Meteor.Error('unauthorized', options.unauthorizedMessage(options, this.userId, args[0]));
-			}
+			// return result
+			return ret;
+		} else {
+			throw new Meteor.Error('unauthorized', options.unauthorizedMessage(options, this.userId, args[0]));
 		}
 	}
 
@@ -205,9 +203,14 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 	}
 
 	// declare method
-	Meteor.methods(_.object([
-		[options.name, method]
-	]));
+	if ((!Meteor.isClient) || (!options.serverOnly)) {
+		// Always declare on server !Meteor.isClient
+		// Always declare is serverOnly = false
+		// Only situation that fails is isClient=true & serverOnly=true
+		Meteor.methods(_.object([
+			[options.name, method]
+		]));
+	}
 
 	// rate limit
 	if (!!options.rateLimit && !!options.rateLimitInterval) {
@@ -748,6 +751,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			field: "",
 			alternativeAuthFunction: null,
 			finishers: [],
+			serverOnly: false,
 			// rateLimit: null,
 			// rateLimitInterval: null,
 		}, _options);
@@ -824,7 +828,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			method: method,
 			useRestArgs: false,
 			finishers: _options.finishers,
-			simulateNothing: false,
+			serverOnly: _options.serverOnly,
 			rateLimit: _options.rateLimit,
 			rateLimitInterval: _options.rateLimitInterval,
 		});
@@ -843,6 +847,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			field: "",
 			alternativeAuthFunction: null,
 			finishers: [],
+			serverOnly: false,
 			// rateLimit: null,
 			// rateLimitInterval: null,
 		}, _options);
@@ -912,7 +917,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			method: method,
 			useRestArgs: false,
 			finishers: _options.finishers,
-			simulateNothing: false,
+			serverOnly: _options.serverOnly,
 			rateLimit: _options.rateLimit,
 			rateLimitInterval: _options.rateLimitInterval,
 		});
@@ -932,6 +937,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			entryPrefix: 'update',
 			alternativeAuthFunction: null,
 			finishers: [],
+			serverOnly: false,
 			// rateLimit: null,
 			// rateLimitInterval: null,
 		}, _options);
@@ -975,7 +981,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			},
 			useRestArgs: true,
 			finishers: _options.finishers,
-			simulateNothing: false,
+			serverOnly: _options.serverOnly,
 			rateLimit: _options.rateLimit,
 			rateLimitInterval: _options.rateLimitInterval,
 		});
@@ -993,6 +999,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			entryName: 'general-update',
 			alternativeAuthFunction: null,
 			finishers: [],
+			serverOnly: false,
 			// rateLimit: null,
 			// rateLimitInterval: null,
 		}, _options);
@@ -1024,7 +1031,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				});
 			},
 			finishers: _options.finishers,
-			simulateNothing: false,
+			serverOnly: _options.serverOnly,
 			rateLimit: _options.rateLimit,
 			rateLimitInterval: _options.rateLimitInterval,
 		});
@@ -1041,6 +1048,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			entryPrefix: 'update-gen',
 			alternativeAuthFunction: null,
 			finishers: [],
+			serverOnly: false,
 			// rateLimit: null,
 			// rateLimitInterval: null,
 			considerFieldsByName: null,
@@ -1077,6 +1085,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 							entryPrefix: _options.entryPrefix,
 							alternativeAuthFunction: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
 							finishers: _options.finishers,
+							serverOnly: _options.serverOnly,
 						});
 					}
 				}
