@@ -45,7 +45,9 @@ function filterObject(o, getCheckableSchemaFunc, ignoreOffSchemaFields, prefix) 
 			} else if (_.isObject(typeInfo) && _.isObject(o[f])) {
 				thisAsObj[f] = filterObject(o[f], getCheckableSchemaFunc, ignoreOffSchemaFields, prefix === "" ? f : (prefix + '.' + f));
 			} else {
-				throw new Meteor.Error('invalid-type-info', prefix === "" ? f : (prefix + '.' + f));
+				thisAsObj[f] = o[f];
+				// possibly a Match type... can't do instance checking...
+				// throw new Meteor.Error('invalid-type-info', prefix === "" ? f : (prefix + '.' + f));
 			}
 		} else {
 			// Keep if in schema or not ignoring off schema fields
@@ -76,6 +78,7 @@ var baseConstructorPrototype = {
 		}
 	},
 };
+
 
 function applyRateLimitItem(name, type, rateLimit, rateLimitInterval) {
 	if (typeof rateLimitInterval === "undefined") {
@@ -145,7 +148,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 				// return result
 				return ret;
 			} else {
-				throw new Meteor.Error('unauthorized', options.unauthorizedMessage(options, this.userId, args[0]) );
+				throw new Meteor.Error('unauthorized', options.unauthorizedMessage(options, this.userId, args[0]));
 			}
 		}
 	}
@@ -301,8 +304,155 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	////////////////////////////////////////////////////////////
 	// Constructor Extension
 	////////////////////////////////////////////////////////////
-	_.extend(ConstructorFunction, _.isFunction(options.constructorExtension) ? options.constructorExtension(ConstructorFunction, collection) : options.constructorExtension);
+	_.extend(ConstructorFunction,
+		_.object(["find", "findOne", "insert", "update", "remove", "upsert"].map(function(fnName) {
+			// Mongo.Collection methods transposed and suitably named
+			var fn;
+			// jshint evil: true
+			eval("fn = function " + fnName + "() { /* " + fnName + " from Mongo.Collection */ return Mongo.Collection.prototype[fnName].apply(this.collection, _.toArray(arguments));};");
+			// jshint evil: false
+			return [fnName, fn];
+		})), {
+			innerJoin: function innerJoin(leftData, joinFields, mapRightFields = {}, selector = {}, options = {}, excludeFields = ['_id'], includeFields = null) {
+				check(leftData, Array);
 
+				check(joinFields, [{
+					leftField: String,
+					rightField: String,
+				}]);
+
+				check(mapRightFields, Object);
+
+				check(selector, Object);
+				check(options, Object);
+
+				check(excludeFields, [String]);
+				check(includeFields, Match.OneOf(null, [String]));
+
+				var self = this;
+
+				joinFields.forEach(function checkFields(fieldsDesc) {
+					if (!self.schemaDescription.hasOwnProperty(fieldsDesc.rightField)) {
+						throw new Meteor.Error("no-such-field-here--join-fields", fieldsDesc.rightField);
+					}
+				});
+
+				_.forEach(mapRightFields, function checkFieldMapItem(mappedFieldName, field) {
+					if (!self.schemaDescription.hasOwnProperty(field)) {
+						throw new Meteor.Error("no-such-field-here--field-map", field);
+					}
+				});
+
+				var resultSet = [];
+
+				leftData.forEach(function(item) {
+					var rightSelector = _.extend({}, selector);
+					joinFields.forEach(function(fieldsDesc) {
+						// build selector
+						_.extend(rightSelector, _.object([
+							[fieldsDesc.rightField, item[fieldsDesc.leftField]]
+						]));
+					});
+					item = _.object(_.map(item, function(v, f) {
+						return [f, v];
+					}));
+
+					resultSet = resultSet.concat(self.find(rightSelector, options)
+						.map(x => x._asPlainObject())
+						.map(function(rItem) {
+							excludeFields.forEach(function(field) {
+								delete rItem[field];
+							});
+							if (includeFields !== null) {
+								rItem = _.object(includeFields
+									.filter(f => rItem.hasOwnProperty(f))
+									.map(f => [mapRightFields.hasOwnProperty(f) ? mapRightFields[f] : f, rItem[f]])
+								);
+							} else {
+								rItem = _.object(_.map(rItem, (v, f) => [mapRightFields.hasOwnProperty(f) ? mapRightFields[f] : f, v]));
+							}
+							return _.extend({}, item, rItem);
+						})
+					);
+				});
+
+				return resultSet;
+			},
+			extendById: function extendById(data, options) {
+				check(data, Array);
+				options = _.extend({
+					idField: "_id",
+					oneItemOnly: true,
+					newFieldName: null
+				}, options);
+				check(options, {
+					dataField: String,
+					idField: String,
+					oneItemOnly: Boolean,
+					newFieldName: Match.OneOf(String, null)
+				});
+				var self = this;
+
+				data.forEach(function(item) {
+					if (item.hasOwnProperty(options.dataField)) {
+						var itm;
+						if (_.isArray(item[options.dataField])) {
+							if (options.idField === "_id") {
+								itm = item[options.dataField].map(id => self.findOne(id));
+							} else {
+								itm = item[options.dataField].map(id => self.find(_.object([
+									[options.idField, id]
+								])).fetch());
+								if (options.oneItemOnly) {
+									itm = itm.map(x => x.shift());
+								}
+							}
+						} else {
+							if (options.dataField === "_id") {
+								itm = self.findOne(item[options.dataField]);
+							} else {
+								itm = self.find(_.object([
+									[options.idField, item[options.dataField]]
+								])).fetch();
+								if (options.oneItemOnly) {
+									itm = itm.shift();
+								}
+							}
+						}
+
+						if (options.newFieldName === null) {
+							item[options.dataField] = itm;
+						} else {
+							item[options.newFieldName] = itm;
+						}
+					}
+				});
+				return data;
+			}
+		}, {
+			__logAll__: function __logAll__(selector, fields, sortDef) {
+				if (!selector) {
+					selector = {};
+				}
+				if (!fields) {
+					fields = {};
+				}
+				if (!sortDef) {
+					sortDef = {};
+				}
+				var count = 0;
+				console.log('**** LOG ALL (' + this.collection._name + ') ****');
+				_.forEach(this.find(selector, {
+					fields: fields,
+					sort: sortDef
+				}).fetch(), function(v, k) {
+					console.log(k + ":", v);
+					count += 1;
+				});
+				console.log('**** ' + count + ' items ****');
+			}
+		},
+		_.isFunction(options.constructorExtension) ? options.constructorExtension(ConstructorFunction, collection) : options.constructorExtension);
 
 	////////////////////////////////////////////////////////////
 	// The Prototype
@@ -893,28 +1043,42 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			finishers: [],
 			// rateLimit: null,
 			// rateLimitInterval: null,
+			considerFieldsByName: null,
+			considerFieldsByFieldPrefix: null,
 			excludeFieldsByName: [],
 			excludeFieldsByFieldPrefix: [],
 		}, _options);
 
 		var _schemaDesc = ConstructorFunction._schemaDescription;
 		_.forEach(_schemaDesc, function(v, f) {
-			var createMethod = _options.excludeFieldsByName.indexOf(f) === -1;
-			_.forEach(_options.excludeFieldsByFieldPrefix, function(exclusionPrefix) {
-				if (exclusionPrefix === f.substr(0, exclusionPrefix.length)) {
-					createMethod = false;
-				}
-			});
+			var considerField = true;
+			if (_.isArray(_options.considerFieldsByName) || _.isArray(_options.considerFieldsByFieldPrefix)) {
+				considerField = (_options.considerFieldsByName || []).indexOf(f) === -1;
+				_.forEach((_options.considerFieldsByFieldPrefix || []), function(inclusionPrefix) {
+					if (inclusionPrefix === f.substr(0, inclusionPrefix.length)) {
+						considerField = false;
+					}
+				});
+			}
 
-			if (createMethod) {
-				if (f !== "_id") {
-					ConstructorFunction.makeMethods_updater({
-						field: f,
-						type: ConstructorFunction.getCheckableSchema(f),
-						entryPrefix: _options.entryPrefix,
-						alternativeAuthFunction: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
-						finishers: _options.finishers,
-					});
+			if (considerField) {
+				var createMethod = _options.excludeFieldsByName.indexOf(f) === -1;
+				_.forEach(_options.excludeFieldsByFieldPrefix, function(exclusionPrefix) {
+					if (exclusionPrefix === f.substr(0, exclusionPrefix.length)) {
+						createMethod = false;
+					}
+				});
+
+				if (createMethod) {
+					if (f !== "_id") {
+						ConstructorFunction.makeMethods_updater({
+							field: f,
+							type: ConstructorFunction.getCheckableSchema(f),
+							entryPrefix: _options.entryPrefix,
+							alternativeAuthFunction: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
+							finishers: _options.finishers,
+						});
+					}
 				}
 			}
 		});

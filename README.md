@@ -12,6 +12,7 @@ This Meteor package is a tool for building "types". Select a Mongo collection, s
 - [Usage: `CollectionTools.build`](#usage-collectiontoolsbuild)
   - [Instance Methods/Properties](#instance-methodsproperties)
   - [Constructor Methods](#constructor-methods)
+    - [Data](#data)
     - [Schemas and Validation](#schemas-and-validation)
     - [Generated Publications](#generated-publications)
     - [Generated Methods](#generated-methods)
@@ -132,6 +133,56 @@ ConstructorFunction = CollectionTools.build({
 
 ### Constructor Methods
 
+#### Data
+
+ - `find`, `findOne`, `insert`, `update`, `upsert`, `remove` from [`Mongo.Collection`](http://docs.meteor.com/#/full/mongo_collection)
+ - `innerJoin(leftData, joinFields, mapRightFields, selector, options, excludeFields, includeFields)`: performs an inner join
+   * `leftData`: the "left" data set; the "right" data set comes from the attached collection
+   * `joinFields`: fields to join on, for example...
+
+     ```javascript
+     [
+         {
+             leftField: "x",
+             rightField: "posX"
+         },
+         {
+             leftField: "y",
+             rightField: "posY"
+         },
+     ]
+     ```
+
+   * `mapRightFields` (default: `{}`): map to rename fields from the "right" collection, for example...
+
+     ```javascript
+     {
+         name: "itemName",
+         timeStamp: "itemTimeStamp"
+     }
+     ```
+
+   * `selector` (default: `{}`): see [documentation for `Mongo.Collection`](http://docs.meteor.com/#/full/find) (for the "right" data set)
+   * `options` (default: `{}`): see [documentation for `Mongo.Collection`](http://docs.meteor.com/#/full/find) (for the "right" data set)
+   * `excludeFields` (default: `['_id']`): list of fields to exclude from the "right" data set
+   * `includeFields` (default: `null`): fields (from the "right" data set) to include after excluding the ones in `excludeFields`
+ - `extendById(data, options)`: given a data set `data` (an `Array`), matches id's in `data` to data in the attached collection, `options` takes the following form...
+
+   ```javascript
+   {
+       dataField: "itemId",  // the field in the data
+       idField: "_id",       // the id field in the attached collection (default: "_id")
+       oneItemOnly: true,    // if the id field is not "_id", a find.fetch() is used
+                             // instead of a findOne(), set to true to take the first
+                             // element, if any (default: true)
+       newFieldName: "item"  // if not null, places the data in a field by that name
+                             // instead of replacing the value in dataField
+                             // (default: null)
+   }
+   ```
+
+ - `__logAll__()`: log all items in attached collection
+
 #### Schemas and Validation
 
  - `schema`: returns the relevant `SimpleSchema` object
@@ -207,6 +258,9 @@ ConstructorFunction = CollectionTools.build({
    * `finishers`: an array of functions to be called on operation completion, bound to an object with an object with the following content (default: `[]`), see the corresponding element in [`CollectionTools.createMethod`](#collectiontoolscreatemethod) for more information.
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
+   * `considerFieldsByName`: fields to consider for inclusion (e.g.: `"friends.$"`); exclusion via `excludeFieldsByName` takes precedence `excludeFieldsByFieldPrefix`
+   * `considerFieldsByFieldPrefix`: field prefixes to consider for inclusion (e.g.: `"friends.$"` includes for consideration fields like `"friends.$.name"` and `"friends.$.particulars.name"`); exclusion via `excludeFieldsByName` takes precedence `excludeFieldsByFieldPrefix`
+   * If neither `considerFieldsByName` nor `considerFieldsByFieldPrefix` are specified, then all fields are considered
    * `excludeFieldsByName`: fields to exclude (e.g.: `"friends.$"`)
    * `excludeFieldsByFieldPrefix`: fields to exclude (e.g.: `"friends.$"` excludes fields like `"friends.$.name"` and `"friends.$.particulars.name"`)
  - `makeMethods_generalUpdater(options)`: creates a monolithic updater for a document with the signature `function(id, updates)`
