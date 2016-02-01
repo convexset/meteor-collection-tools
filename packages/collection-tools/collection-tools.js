@@ -42,6 +42,8 @@ function filterObject(o, getCheckableSchemaFunc, ignoreOffSchemaFields, prefix) 
 			var typeInfo = checkableSchema[f];
 			if (_.isFunction(typeInfo)) {
 				thisAsObj[f] = o[f];
+			} else if (_.isObject(typeInfo) && _.isDate(o[f])) {
+				thisAsObj[f] = o[f];
 			} else if (_.isObject(typeInfo) && _.isObject(o[f])) {
 				thisAsObj[f] = filterObject(o[f], getCheckableSchemaFunc, ignoreOffSchemaFields, prefix === "" ? f : (prefix + '.' + f));
 			} else {
