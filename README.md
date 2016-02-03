@@ -103,6 +103,14 @@ ConstructorFunction = CollectionTools.build({
 
     // transformation for the collection
     // See: "transform option" on http://docs.meteor.com/#/full/mongo_collection
+    // A plain object from the Mongo collection is passed in and "typically"
+    //    a plain object should be returned. An empty object that is linked
+    //    to the relevant prototype (in the sense of "new") will then be
+    //    "extended" with the content of the former object returned by the
+    //    transform.
+    // The transform is called with the aforementioned "protolinked" instance
+    //    as the calling context. This provides prototype methods. So do not use
+    //    arrow functions if you want access to prototype methods.
     transform: x => x,
 
     // An authentication function for generated Meteor methods
