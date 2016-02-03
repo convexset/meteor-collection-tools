@@ -225,7 +225,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 
 PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function build(options) {
 
-	options = PackageUtilities.updateDefaultOptionsWithInput({
+	options = _.extend({
 		collectionName: "",
 		constructorName: "",
 		setRestrictiveAllowDenyDefaults: true,
@@ -248,6 +248,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		options.methodPrefix = 'collections/' + _cn + '/';
 	}
 
+	if (!_.isFunction(options.transform)) {
+		throw new Meteor.Error("invalid-transform");
+	}
 
 	////////////////////////////////////////////////////////////
 	// Basic Constructor
@@ -270,7 +273,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			// if (!(this instanceof constructor)) { throw "improper-constructor-invocation"; }'
 			s += '    if (!(this instanceof ' + constructorName + ')) { throw "improper-constructor-invocation"; }' + '\n';
 		}
-		s += '    return _.extend(this, options.transform(doc));' + '\n';
+		s += '    return _.extend(this, options.transform.call(this, doc));' + '\n';
 		s += '}' + '\n';
 		// jshint evil: true
 		eval(s);
