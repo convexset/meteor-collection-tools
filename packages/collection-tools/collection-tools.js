@@ -438,6 +438,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				return data;
 			}
 		}, {
+			fetch: function findAndFetch() {
+				return Mongo.Collection.prototype.find.apply(this.collection, _.toArray(arguments)).fetch();
+			},
 			__logAll__: function __logAll__(selector, fields, sortDef) {
 				if (!selector) {
 					selector = {};
@@ -465,9 +468,20 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	////////////////////////////////////////////////////////////
 	// The Prototype
 	////////////////////////////////////////////////////////////
-	ConstructorFunction.prototype = _.extend(Object.create(baseConstructorPrototype), {
-		constructor: ConstructorFunction,
-	}, _.isFunction(options.prototypeExtension) ? options.prototypeExtension(ConstructorFunction, collection) : options.prototypeExtension);
+	(function() {
+		ConstructorFunction.prototype = Object.create(baseConstructorPrototype);
+		Object.defineProperty(ConstructorFunction.prototype, 'constructor', {
+			value: ConstructorFunction,
+			enumerable: false,
+			writable: true,
+			configurable: true
+		});
+
+		var prototypeExtension = _.isFunction(options.prototypeExtension) ? options.prototypeExtension(ConstructorFunction, collection) : options.prototypeExtension;
+		Object.getOwnPropertyNames(prototypeExtension).forEach(function(key) {
+			Object.defineProperty(ConstructorFunction.prototype, key, Object.getOwnPropertyDescriptor(prototypeExtension, key));
+		});
+	})();
 
 
 	////////////////////////////////////////////////////////////
