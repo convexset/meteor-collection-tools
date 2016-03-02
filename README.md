@@ -189,6 +189,8 @@ ConstructorFunction = CollectionTools.build({
    }
    ```
 
+ - `fetch`: essentially a `find(/* args here */).fetch()`
+ - `mongoTransform`: returns the transform used in the attached `Mongo.Collection`
  - `__logAll__()`: log all items in attached collection
 
 #### Schemas and Validation
@@ -197,9 +199,10 @@ ConstructorFunction = CollectionTools.build({
  - `schemaDescription`: returns the relevant arguments used to create the `SimpleSchema` object
  - `_schemaDescription`: similar to `schemaDescription`, except `'$'` is replaced with `'*'` in the keys
  - `getTypeInfo(fieldSpec)`: gets the type info for a field specific field (matches wildcards, so `'ratings.3.rating'` would return the type info for `'ratings.$.rating'`)
- - `getObjectWithDefaultValues(prefix)`: returns an object (or sub-object) with default values
+ - `getObjectWithDefaultValues(prefix = "", callConstructor = true)`: returns an object (or sub-object) with default values
    * use with no arguments for entire document
    * use with `prefix` to obtain default values for sub-objects or arrays (e.g.: `xxx.getObjectWithDefaultValues('ratings.$.')` where `ratings` is an array of objects)
+   * does not call constructor if `callConstructor` is set to false
 
  - `getModifiedSchema(altSchemaElements, tag)`: returns a "modified schema"
    * `altSchemaElements` (optional): schema elements to replace items in existing schema (Why would you ever want to use this? Someone asked me for this... Don't blame me.)

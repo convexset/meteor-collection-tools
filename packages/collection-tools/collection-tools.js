@@ -267,22 +267,19 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				constructorName += c;
 			}
 		});
-		s += '(doc) {' + '\n';
+		s += '() {' + '\n';
 		if (constructorName.length > 0) {
 			// add protection in the form of...
 			// if (!(this instanceof constructor)) { throw "improper-constructor-invocation"; }'
 			s += '    if (!(this instanceof ' + constructorName + ')) { throw "improper-constructor-invocation"; }' + '\n';
 		}
-		s += '    return _.extend(this, options.transform.call(this, doc));' + '\n';
+		s += '    return _.extend(this, options.transform.apply(this, _.toArray(arguments)));' + '\n';
 		s += '}' + '\n';
 		// jshint evil: true
 		eval(s);
 		// jshint evil: false
 		return fn;
 	})();
-	// var ConstructorFunction = function(doc) {
-	// 	return _.extend(this, options.transform(doc));
-	// };
 
 
 	////////////////////////////////////////////////////////////
@@ -312,6 +309,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	////////////////////////////////////////////////////////////
 	// Constructor Extension
 	////////////////////////////////////////////////////////////
+	var constructorExtension = _.isFunction(options.constructorExtension) ? options.constructorExtension(ConstructorFunction, collection) : options.constructorExtension;
 	_.extend(ConstructorFunction,
 		_.object(["find", "findOne", "insert", "update", "remove", "upsert"].map(function(fnName) {
 			// Mongo.Collection methods transposed and suitably named
@@ -462,8 +460,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				});
 				console.log('**** ' + count + ' items ****');
 			}
-		},
-		_.isFunction(options.constructorExtension) ? options.constructorExtension(ConstructorFunction, collection) : options.constructorExtension);
+		}, {
+			mongoTransform: options.transform
+		}, constructorExtension);
 
 	////////////////////////////////////////////////////////////
 	// The Prototype
@@ -539,12 +538,10 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	//  - schema modification
 	//  - generate "checkable" (and "introspectable") schema
 	////////////////////////////////////////////////////////////
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getObjectWithDefaultValues', function getObjectWithDefaultValues(prefix) {
-		var obj = {};
-		if (!prefix) {
-			prefix = "";
-		}
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getObjectWithDefaultValues', function getObjectWithDefaultValues(prefix = "", callConstructor = true) {
+		// TODO: address nested simple schemas in getObjectWithDefaultValues
 
+		var obj = {};
 		// create schema limited to the prefix
 		var schemaDesc = _.object(
 			_.map(
@@ -566,7 +563,12 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				}
 			}
 		});
-		return (prefix === "") ? new ConstructorFunction(obj) : obj;
+
+		if ((prefix === "") && callConstructor) {
+			return new ConstructorFunction(obj);
+		} else {
+			return obj;
+		}
 	});
 
 
