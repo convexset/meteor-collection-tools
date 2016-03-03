@@ -439,6 +439,12 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			fetch: function findAndFetch() {
 				return Mongo.Collection.prototype.find.apply(this.collection, _.toArray(arguments)).fetch();
 			},
+			getItemProperty: function getItemProperty(_id, propName) {
+				var item = Mongo.Collection.prototype.findOne.call(this.collection, {_id: _id});
+				if (!!item) {
+					return item[propName];
+				}
+			},
 			__logAll__: function __logAll__(selector, fields, sortDef) {
 				if (!selector) {
 					selector = {};

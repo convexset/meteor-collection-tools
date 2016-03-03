@@ -190,6 +190,7 @@ ConstructorFunction = CollectionTools.build({
    ```
 
  - `fetch`: essentially a `find(/* args here */).fetch()`
+ - `getItemProperty(_id, propName)`: syntactic sugar for a safe way to do `findOne(_id)[propName]`
  - `mongoTransform`: returns the transform used in the attached `Mongo.Collection`
  - `__logAll__()`: log all items in attached collection
 
