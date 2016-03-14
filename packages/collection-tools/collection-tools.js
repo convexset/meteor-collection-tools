@@ -404,7 +404,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 						var itm;
 						if (_.isArray(item[options.dataField])) {
 							if (options.idField === "_id") {
-								itm = item[options.dataField].map(id => self.findOne(id));
+								itm = item[options.dataField].map(id => self.findOne({
+									_id: id
+								}));
 							} else {
 								itm = item[options.dataField].map(id => self.find(_.object([
 									[options.idField, id]
@@ -415,7 +417,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 							}
 						} else {
 							if (options.dataField === "_id") {
-								itm = self.findOne(item[options.dataField]);
+								itm = self.findOne({
+									_id: item[options.dataField]
+								});
 							} else {
 								itm = self.find(_.object([
 									[options.idField, item[options.dataField]]
@@ -440,7 +444,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				return Mongo.Collection.prototype.find.apply(this.collection, _.toArray(arguments)).fetch();
 			},
 			getItemProperty: function getItemProperty(_id, propName) {
-				var item = Mongo.Collection.prototype.findOne.call(this.collection, {_id: _id});
+				var item = Mongo.Collection.prototype.findOne.call(this.collection, {
+					_id: _id
+				});
 				if (!!item) {
 					return item[propName];
 				}
