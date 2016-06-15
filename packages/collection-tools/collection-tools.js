@@ -4,7 +4,12 @@
 /* global DDPRateLimiter: true */
 
 /* global CollectionTools: true */
-/* global PackageUtilities: true */
+
+import { checkNpmVersions } from 'meteor/tmeasday:check-npm-versions';
+checkNpmVersions({
+  'package-utils': '^0.2.1'
+});
+const PackageUtilities = require('package-utils');
 
 SimpleSchema.extendOptions({
 	subSchemaTags: Match.Optional([String])

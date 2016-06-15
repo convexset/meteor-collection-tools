@@ -1,6 +1,6 @@
 Package.describe({
 	name: 'convexset:collection-tools',
-	version: '0.1.2_10',
+	version: '0.1.2_11',
 	summary: 'A tool for \"unifying\" collections, Meteor methods, schemas and transformations',
 	git: 'https://github.com/convexset/meteor-collection-tools',
 	documentation: '../../README.md'
@@ -8,8 +8,7 @@ Package.describe({
 
 
 Package.onUse(function(api) {
-	api.versionsFrom('1.2.0.2');
-
+	api.versionsFrom('1.3.1');
 	api.use(
 		[
 			'ecmascript', 'underscore', 'check', 'ejson',
@@ -17,7 +16,7 @@ Package.onUse(function(api) {
 			'meteorhacks:unblock@1.1.0',
 			'aldeed:simple-schema@1.4.0',
 			'convexset:match-extensions@0.1.1_2',
-			'convexset:package-utils@0.1.14',
+			'tmeasday:check-npm-versions@0.3.1'
 		]
 	);
 	api.use([], 'server');
