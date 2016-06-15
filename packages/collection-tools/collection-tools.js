@@ -7,9 +7,11 @@
 
 import { checkNpmVersions } from 'meteor/tmeasday:check-npm-versions';
 checkNpmVersions({
-  'package-utils': '^0.2.1'
+  'package-utils': '^0.2.1',
+  'underscore' : '^1.8.3'
 });
 const PackageUtilities = require('package-utils');
+const _ = require('underscore');
 
 SimpleSchema.extendOptions({
 	subSchemaTags: Match.Optional([String])
@@ -120,8 +122,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 	options = _.extend({
 		name: "some-method-name",
 		schema: {},
-		authenticationCheck: (userId, id) => true,
-		unauthorizedMessage: (opts, userId, id) => "unauthorized for " + userId + ": " + opts.name,
+		authenticationCheck: () => true,  // (userId, id) => true,
+		unauthorizedMessage: (opts, userId, id) => `unauthorized for ${userId}: ${opts.name} (_id: ${id})`,
 		method: () => null,
 		useRestArgs: false,
 		finishers: [],
@@ -238,7 +240,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		prototypeExtension: {},
 		constructorExtension: {},
 		transform: x => x,
-		globalAuthFunction: (userId, documentId) => true,
+		globalAuthFunction: () => true,  // (userId, documentId) => true,
 		globalAuthFunction_fromConstructorAndCollection: null,
 		methodPrefix: 'collections/',
 		defaultRateLimit: 10,
