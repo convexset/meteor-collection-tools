@@ -33,7 +33,7 @@ WARNING: npm peer requirements not installed:
 Read more about installing npm peer dependencies:
   http://guide.meteor.com/using-packages.html#peer-npm-dependencies
 ```
-It is because, by design, the package does not include instances of these from `npm` to avoid repetition. (In this case, `meteor npm install --save package-utils`.)
+It is because, by design, the package does not include instances of these from `npm` to avoid repetition. (In this case, `meteor npm install --save package-utils` will deal with the problem.)
 
 See [this](http://guide.meteor.com/using-packages.html#peer-npm-dependencies) or [this](https://atmospherejs.com/tmeasday/check-npm-versions) for more information.
 
