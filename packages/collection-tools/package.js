@@ -1,4 +1,5 @@
 Package.describe({
+	// [validatis:stack]
 	name: 'convexset:collection-tools',
 	version: '0.1.2_14',
 	summary: 'A tool for \"unifying\" collections, Meteor methods, schemas and transformations',
