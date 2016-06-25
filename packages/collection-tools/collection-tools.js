@@ -702,6 +702,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			throw new Meteor.Error('publication-already-exists', pubName);
 		}
 		_options = _.extend({
+			unblock: false,
 			selector: {},
 			selectOptions: {},
 			alternativeAuthFunction: null,
@@ -710,7 +711,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}, _options);
 		if (Meteor.isServer) {
 			Meteor.publish(pubName, function() {
-				this.unblock();
+				if (_options.unblock) {
+					this.unblock();
+				}
 				if (_.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction(this.userId) : options.globalAuthFunction(this.userId)) {
 					return collection.find(_options.selector, _options.selectOptions);
 				} else {
@@ -738,6 +741,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			throw new Meteor.Error('publication-already-exists', pubName);
 		}
 		_options = _.extend({
+			unblock: false,
 			idField: "_id",
 			selectOptions: {},
 			alternativeAuthFunction: null,
@@ -747,7 +751,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		if (Meteor.isServer) {
 			Meteor.publish(pubName, function(id) {
 				check(id, String);
-				this.unblock();
+				if (_options.unblock) {
+					this.unblock();
+				}
 				if (_.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction(this.userId, id) : options.globalAuthFunction(this.userId, id)) {
 					return collection.find(_.object([
 						[_options.idField, id]
@@ -786,6 +792,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			_options = {};
 		}
 		_options = _.extend({
+			unblock: false,
 			entryPrefix: 'add',
 			withParams: false,
 			field: "",
@@ -821,7 +828,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				// add default document to collection
 				_schema = [];
 				method = function() {
-					this.unblock();
+					if (_options.unblock) {
+						this.unblock();
+					}
 					var doc = ConstructorFunction.getObjectWithDefaultValues();
 					return collection.insert(doc);
 				};
@@ -829,7 +838,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				// add document (passed in) to collection
 				_schema = [String, schema];
 				method = function(id, doc) {
-					this.unblock();
+					if (_options.unblock) {
+						this.unblock();
+					}
 					return collection.insert(doc);
 				};
 			}
@@ -838,7 +849,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				// add default sub-document to array field
 				_schema = [String];
 				method = function(id) {
-					this.unblock();
+					if (_options.unblock) {
+						this.unblock();
+					}
 					var subDoc = ConstructorFunction.getObjectWithDefaultValues(_options.field + '.$.');
 					return collection.update(id, {
 						$push: _.object([
@@ -850,7 +863,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				// add sub-document (passed in) to array field
 				_schema = [String, schema[_options.field][0]];
 				method = function(id, subDoc) {
-					this.unblock();
+					if (_options.unblock) {
+						this.unblock();
+					}
 					return collection.update(id, {
 						$push: _.object([
 							[_options.field, subDoc]
@@ -883,6 +898,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			_options = {};
 		}
 		_options = _.extend({
+			unblock: false,
 			entryPrefix: 'remove',
 			field: "",
 			alternativeAuthFunction: null,
@@ -911,14 +927,18 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			// remove document
 			schema = [String];
 			method = function(id) {
-				this.unblock();
+				if (_options.unblock) {
+					this.unblock();
+				}
 				return collection.remove(id);
 			};
 		} else if (_.isArray(ConstructorFunction.getCheckableSchema()[_options.field])) {
 			// remove array entry
 			schema = [String, Match.isNonNegativeInteger];
 			method = function(id, idx) {
-				this.unblock();
+				if (_options.unblock) {
+					this.unblock();
+				}
 				var subDoc = collection.findOne(id, {
 					fields: _.object([
 						[_options.field, 1]
@@ -940,7 +960,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			// unset entire field
 			schema = [String];
 			method = function(id) {
-				this.unblock();
+				if (_options.unblock) {
+					this.unblock();
+				}
 				return collection.update(id, {
 					$unset: _.object([
 						[_options.field, ""]
@@ -972,6 +994,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			_options = {};
 		}
 		_options = _.extend({
+			unblock: false,
 			field: '',
 			type: Function,
 			entryPrefix: 'update',
@@ -1003,6 +1026,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			authenticationCheck: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
 			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
 			method: function(id, value, ...args) {
+				if (_options.unblock) {
+					this.unblock();
+				}
 				var fs = _options.field.split('.');
 				var argIdx = 0;
 				fs.forEach(function(f, idx) {
@@ -1036,6 +1062,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			_options = {};
 		}
 		_options = _.extend({
+			unblock: false,
 			entryName: 'general-update',
 			alternativeAuthFunction: null,
 			finishers: [],
@@ -1058,6 +1085,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			authenticationCheck: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
 			// unauthorizedMessage: (opts, userId) => "unauthorized for " + userId + ": " + opts.name,
 			method: function(id, updates) {
+				if (_options.unblock) {
+					this.unblock();
+				}
 				_.forEach(updates, function(v, f) {
 					var typeInfo = ConstructorFunction.getTypeInfo(f);
 					if (!typeInfo) {
@@ -1085,6 +1115,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			_options = {};
 		}
 		_options = _.extend({
+			unblock: false,
 			entryPrefix: 'update-gen',
 			alternativeAuthFunction: null,
 			finishers: [],
@@ -1120,6 +1151,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				if (createMethod) {
 					if (f !== "_id") {
 						ConstructorFunction.makeMethods_updater({
+							unblock: _options.unblock,
 							field: f,
 							type: ConstructorFunction.getCheckableSchema(f),
 							entryPrefix: _options.entryPrefix,
