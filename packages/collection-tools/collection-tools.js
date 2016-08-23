@@ -295,7 +295,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	var collection = new Mongo.Collection(options.collectionName, {
 		transform: function(doc) {
 			return new ConstructorFunction(doc);
-		}
+		},
+		defineMutationMethods: !options.setRestrictiveAllowDenyDefaults
 	});
 	PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'collection', collection);
 	if (!!options.setRestrictiveAllowDenyDefaults) {
