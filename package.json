@@ -1,0 +1,24 @@
+{
+  "name": "collection-tools",
+  "version": "1.0.0",
+  "description": "This Meteor package is a tool for building \"types\". Select a Mongo collection, specify a schema, and a few other options such as an authentication function, and a constructor function is generated with many useful methods pre-loaded onto it (such as for generating publications and Meteor methods for adding/updating/removing with authentication baked in).",
+  "main": "index.js",
+  "dependencies": {
+    "package-utils": "^0.2.1",
+    "underscore": "^1.8.3"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/convexset/meteor-collection-tools.git"
+  },
+  "author": "Jeremy Chen <convexset@gmail.com> (https://github.com/convexset/)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/convexset/meteor-collection-tools/issues"
+  },
+  "homepage": "https://github.com/convexset/meteor-collection-tools#readme"
+}
