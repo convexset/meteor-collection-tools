@@ -1,14 +1,17 @@
-/* global SimpleSchema: true */
-/* global check: true */
-/* global Match: true */
-/* global DDPRateLimiter: true */
+/* eslint-disable no-console */
+/* eslint-disable no-extra-parens */
 
-/* global CollectionTools: true */
+import { Meteor } from 'meteor/meteor';
+import { Mongo } from 'meteor/mongo';
+import { check, Match } from 'meteor/check';
+import { DDPRateLimiter } from 'meteor/ddp-rate-limiter';
+import { EJSON } from 'meteor/ejson';
+import { SimpleSchema } from 'meteor/aldeed:simple-schema';
 
 import { checkNpmVersions } from 'meteor/tmeasday:check-npm-versions';
 checkNpmVersions({
-  'package-utils': '^0.2.1',
-  'underscore' : '^1.8.3'
+	'package-utils': '^0.2.1',
+	'underscore': '^1.8.3'
 });
 const PackageUtilities = require('package-utils');
 const _ = require('underscore');
@@ -17,22 +20,33 @@ SimpleSchema.extendOptions({
 	subSchemaTags: Match.Optional([String])
 });
 
-var __ct = function CollectionTools() {};
+const __ct = function CollectionTools() {};
 
-CollectionTools = new __ct();
+const CollectionTools = new __ct();
+
+
+// Debug Mode
+let _debugMode = false;
+PackageUtilities.addPropertyGetterAndSetter(CollectionTools, 'DEBUG_MODE', {
+	get: () => _debugMode,
+	set: (value) => {
+		_debugMode = !!value;
+	},
+});
+
 
 function filterObject(o, getCheckableSchemaFunc, ignoreOffSchemaFields, prefix) {
-	if (typeof prefix === "undefined") {
-		prefix = "";
+	if (typeof prefix === 'undefined') {
+		prefix = '';
 	}
-	var checkableSchema = getCheckableSchemaFunc(prefix);
+	const checkableSchema = getCheckableSchemaFunc(prefix);
 
 	if (_.isArray(checkableSchema)) {
 		if (_.isArray(o)) {
 			if ((checkableSchema.length === 1) && (_.isFunction(checkableSchema[0]))) {
 				return o;
 			} else {
-				return o.map(item => filterObject(item, getCheckableSchemaFunc, ignoreOffSchemaFields, prefix === "" ? '$' : (prefix + ".$")));
+				return o.map(item => filterObject(item, getCheckableSchemaFunc, ignoreOffSchemaFields, prefix === '' ? '$' : `${prefix}.$`));
 			}
 		} else {
 			if (ignoreOffSchemaFields) {
@@ -43,20 +57,20 @@ function filterObject(o, getCheckableSchemaFunc, ignoreOffSchemaFields, prefix) 
 		}
 	}
 
-	var thisAsObj = {};
-	_.forEach(o, function(v, f) {
+	const thisAsObj = {};
+	_.forEach(o, (v, f) => {
 		if (checkableSchema.hasOwnProperty(f)) {
-			var typeInfo = checkableSchema[f];
+			const typeInfo = checkableSchema[f];
 			if (_.isFunction(typeInfo)) {
 				thisAsObj[f] = o[f];
 			} else if (_.isObject(typeInfo) && _.isDate(o[f])) {
 				thisAsObj[f] = o[f];
 			} else if (_.isObject(typeInfo) && _.isObject(o[f])) {
-				thisAsObj[f] = filterObject(o[f], getCheckableSchemaFunc, ignoreOffSchemaFields, prefix === "" ? f : (prefix + '.' + f));
+				thisAsObj[f] = filterObject(o[f], getCheckableSchemaFunc, ignoreOffSchemaFields, prefix === '' ? f : `${prefix}.${f}`);
 			} else {
 				thisAsObj[f] = o[f];
 				// possibly a Match type... can't do instance checking...
-				// throw new Meteor.Error('invalid-type-info', prefix === "" ? f : (prefix + '.' + f));
+				// throw new Meteor.Error('invalid-type-info', prefix === '' ? f : (prefix + '.' + f));
 			}
 		} else {
 			// Keep if in schema or not ignoring off schema fields
@@ -69,17 +83,17 @@ function filterObject(o, getCheckableSchemaFunc, ignoreOffSchemaFields, prefix) 
 }
 PackageUtilities.addImmutablePropertyFunction(CollectionTools, '_filterObject', filterObject);
 
-var baseConstructorPrototype = {
+const baseConstructorPrototype = {
 	_asPlainObject: function _asPlainObject(ignoreOffSchemaFields) {
 		return filterObject(this, _.bind(this.constructor.getCheckableSchema, this.constructor), ignoreOffSchemaFields);
 	},
 	validate: function validate(useCheck, ignoreOffSchemaFields) {
-		var thisAsPlainObject = this._asPlainObject(!!ignoreOffSchemaFields);
+		const thisAsPlainObject = this._asPlainObject(!!ignoreOffSchemaFields);
 		if (!!useCheck) {
 			return check(thisAsPlainObject, this.constructor.schema);
 		} else {
-			var ssContext = this.constructor.schema.newContext();
-			var result = ssContext.validate(thisAsPlainObject);
+			const ssContext = this.constructor.schema.newContext();
+			const result = ssContext.validate(thisAsPlainObject);
 			return {
 				result: result,
 				context: ssContext
@@ -90,10 +104,10 @@ var baseConstructorPrototype = {
 
 
 function applyRateLimitItem(name, type, rateLimit, rateLimitInterval) {
-	if (typeof rateLimitInterval === "undefined") {
+	if (typeof rateLimitInterval === 'undefined') {
 		rateLimitInterval = 1000;
 	}
-	if (typeof rateLimitInterval === "undefined") {
+	if (typeof rateLimitInterval === 'undefined') {
 		rateLimitInterval = 1000;
 	}
 	DDPRateLimiter.addRule({
@@ -103,7 +117,7 @@ function applyRateLimitItem(name, type, rateLimit, rateLimitInterval) {
 	}, rateLimit, rateLimitInterval);
 }
 
-function applyRateLimiting_SpecificInstance(name, type, options, defaultOptions) {
+function applyRateLimitingToSpecificInstance(name, type, options, defaultOptions) {
 	if (!!options.rateLimit && !!options.rateLimitInterval) {
 		if ((options.rateLimit > 0) && (options.rateLimit > 0)) {
 			applyRateLimitItem(name, type, options.rateLimit, options.rateLimitInterval);
@@ -117,10 +131,10 @@ function applyRateLimiting_SpecificInstance(name, type, options, defaultOptions)
 
 
 // create method and specify all elements of the method separately
-var __allMethodNames = [];
+const __allMethodNames = [];
 PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', function createMethod(options) {
 	options = _.extend({
-		name: "some-method-name",
+		name: 'some-method-name',
 		schema: {},
 		authenticationCheck: () => true,  // (userId, id) => true,
 		unauthorizedMessage: (opts, userId, id) => `unauthorized for ${userId}: ${opts.name} (_id: ${id})`,
@@ -136,11 +150,11 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 		throw new Meteor.Error('repeated-method-name', options.name);
 	}
 
-	function doWork_viaApply(args) {
+	function doWorkViaApply(args) {
 		// authenticate
 		if (!_.isFunction(options.authenticationCheck) || options.authenticationCheck(Meteor.userId(), args[0])) {
 			// run operation
-			var ret = options.method.apply(this, args);
+			const ret = options.method.apply(this, args);
 
 			// run finishers
 			options.finishers.forEach(function(fn) {
@@ -161,14 +175,19 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 	}
 
 	// method body
-	var method;
+	let method;
 	if (_.isArray(options.schema)) {
 		// The usual methods with argument lists
-		method = function() {
+		method = function generatedMethod() {
 			// check arguments
 			check(arguments, Match.Any);
 
-			var args = _.toArray(arguments);
+			if (_debugMode) {
+				console.log(`[CollectionTools|method|${options.name}] arguments:`, _.toArray(arguments));
+				// console.log(`[CollectionTools|method|${options.name}] options:`, options);
+			}
+
+			let args = _.toArray(arguments);
 			if (!options.useRestArgs) {
 				if (args.length !== options.schema.length) {
 					throw new Meteor.Error('validation-error-schema-length-mismatch', EJSON.stringify({
@@ -189,25 +208,45 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 						schema: options.schema.map(x => _.isFunction(x) ? x.name : x),
 					}));
 				}
-				var restArgs = args.splice(options.schema.length - 1);
+
+				// to ensure that if there are no rest args, there still is
+				// an empty array to check
+				const restArgs = args.splice(options.schema.length - 1);
+				if (_debugMode) {
+					console.log(`[CollectionTools|method|${options.name}] restArgs:`, restArgs);
+				}
 				args.push(restArgs);
 			}
-			_.forEach(args, function(v, idx) {
-				// check all properly
+
+			// quick check of all arguments
+			_.forEach(args, function checkSchemaElement(v, idx) {
 				check(v, options.schema[idx]);
 			});
 
-			// do work: 
-			return _.bind(doWork_viaApply, this)(args);
+			// link rest arguments (so it doesn't show up as a lonely array)
+			const restArgs = args.pop();
+			args = args.concat(restArgs);
+
+			// do work:
+			if (_debugMode) {
+				console.log(`[CollectionTools|method|${options.name}] doWorkViaApply with args:`, args);
+			}
+			return _.bind(doWorkViaApply, this)(args);
 		};
 	} else {
 		// via destructuring...
-		method = function(args) {
+		method = function generatedMethod(args) {
 			// check arguments
 			check(args, new SimpleSchema(options.schema));
+			if (_debugMode) {
+				console.log(`[CollectionTools|method-destructuring|${options.name}] arguments:`, _.toArray(args));
+			}
 
 			// do work
-			return _.bind(doWork_viaApply, this)([args]);
+			if (_debugMode) {
+				console.log(`[CollectionTools|method|${options.name}] doWorkViaApply with args:`, [args]);
+			}
+			return _.bind(doWorkViaApply, this)([args]);
 		};
 	}
 
@@ -231,10 +270,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'createMethod', f
 });
 
 PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function build(options) {
-
 	options = _.extend({
-		collectionName: "",
-		constructorName: "",
+		collectionName: '',
+		constructorName: '',
 		setRestrictiveAllowDenyDefaults: true,
 		schema: {},
 		prototypeExtension: {},
@@ -246,29 +284,30 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		defaultRateLimit: 10,
 		defaultRateLimitInterval: 1000,
 	}, options, false);
-	if (options.collectionName === "") {
+	if (options.collectionName === '') {
 		options.collectionName = null;
 	}
-	if (options.methodPrefix === "") {
-		var _cNSplit = String(options.collectionName).split('_');
-		var _cn = (_cNSplit.length > 1) ? _cNSplit.splice(1).join('_') : _cNSplit[0];
-		options.methodPrefix = 'collections/' + _cn + '/';
+	if (options.methodPrefix === '') {
+		const _cNSplit = String(options.collectionName).split('_');
+		const _cn = (_cNSplit.length > 1) ? _cNSplit.splice(1).join('_') : _cNSplit[0];
+		options.methodPrefix = `collections/${_cn}/`;
 	}
 
 	if (!_.isFunction(options.transform)) {
-		throw new Meteor.Error("invalid-transform");
+		throw new Meteor.Error('invalid-transform');
 	}
 
 	////////////////////////////////////////////////////////////
 	// Basic Constructor
 	////////////////////////////////////////////////////////////
-	var ConstructorFunction = (function() {
+	const ConstructorFunction = (function() {
 		// for nice constructor names
-		var name = (!!options.constructorName) ? options.constructorName : options.collectionName;
-		var fn;
-		var s = 'fn = function ';
-		var constructorName = '';
-		Array.prototype.forEach.call(name, function(c, idx) {
+		const name = (!!options.constructorName) ? options.constructorName : options.collectionName;
+		let fn;
+		let s = 'fn = function ';
+		let constructorName = '';
+		Array.prototype.forEach.call(name, function nameConstructorWithValidCharacters(c, idx) {
+			// eslint-disable-next-line yoda
 			if ((c === '_') || (('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || ((idx !== 0) && ('0' <= c) && (c <= '9'))) {
 				s += c;
 				constructorName += c;
@@ -277,12 +316,13 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		s += '() {' + '\n';
 		if (constructorName.length > 0) {
 			// add protection in the form of...
-			// if (!(this instanceof constructor)) { throw "improper-constructor-invocation"; }'
-			s += '    if (!(this instanceof ' + constructorName + ')) { throw "improper-constructor-invocation"; }' + '\n';
+			// if (!(this instanceof constructor)) { throw 'improper-constructor-invocation'; }'
+			s += `    if (!(this instanceof ${constructorName})) { throw "improper-constructor-invocation"; }\n`;
 		}
-		s += '    return _.extend(this, options.transform.apply(this, _.toArray(arguments)));' + '\n';
-		s += '}' + '\n';
+		s += '    return _.extend(this, options.transform.apply(this, _.toArray(arguments)));\n';
+		s += '}\n';
 		// jshint evil: true
+		// eslint-disable-next-line no-eval
 		eval(s);
 		// jshint evil: false
 		return fn;
@@ -292,7 +332,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	////////////////////////////////////////////////////////////
 	// The Collection
 	////////////////////////////////////////////////////////////
-	var collection = new Mongo.Collection(options.collectionName, {
+	const collection = new Mongo.Collection(options.collectionName, {
 		transform: function(doc) {
 			return new ConstructorFunction(doc);
 		},
@@ -317,17 +357,18 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	////////////////////////////////////////////////////////////
 	// Constructor Extension
 	////////////////////////////////////////////////////////////
-	var constructorExtension = _.isFunction(options.constructorExtension) ? options.constructorExtension(ConstructorFunction, collection) : options.constructorExtension;
+	const constructorExtension = _.isFunction(options.constructorExtension) ? options.constructorExtension(ConstructorFunction, collection) : options.constructorExtension;
 	_.extend(ConstructorFunction,
-		_.object(["find", "findOne", "insert", "update", "remove", "upsert"].map(function(fnName) {
+		_.object(['find', 'findOne', 'insert', 'update', 'remove', 'upsert'].map(fnName => {
 			// Mongo.Collection methods transposed and suitably named
-			var fn;
+			let fn;
 			// jshint evil: true
-			eval("fn = function " + fnName + "() { /* " + fnName + " from Mongo.Collection */ return Mongo.Collection.prototype[fnName].apply(this.collection, _.toArray(arguments));};");
+			// eslint-disable-next-line no-eval
+			eval(`fn = function ${fnName}() { /* ' + fnName + ' from Mongo.Collection */ return Mongo.Collection.prototype[fnName].apply(this.collection, _.toArray(arguments));};`);
 			// jshint evil: false
 			return [fnName, fn];
 		})), {
-			innerJoin: function innerJoin(leftData, joinFields, mapRightFields = {}, selector = {}, options = {}, excludeFields = ['_id'], includeFields = null) {
+			innerJoin: function innerJoin(leftData, joinFields, mapRightFields = {}, selector = {}, _options = {}, excludeFields = ['_id'], includeFields = null) {
 				check(leftData, Array);
 
 				check(joinFields, [{
@@ -338,43 +379,43 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				check(mapRightFields, Object);
 
 				check(selector, Object);
-				check(options, Object);
+				check(_options, Object);
 
 				check(excludeFields, [String]);
 				check(includeFields, Match.OneOf(null, [String]));
 
-				var self = this;
+				const self = this;
 
 				joinFields.forEach(function checkFields(fieldsDesc) {
 					if (!self.schemaDescription.hasOwnProperty(fieldsDesc.rightField)) {
-						throw new Meteor.Error("no-such-field-here--join-fields", fieldsDesc.rightField);
+						throw new Meteor.Error('no-such-field-here--join-fields', fieldsDesc.rightField);
 					}
 				});
 
 				_.forEach(mapRightFields, function checkFieldMapItem(mappedFieldName, field) {
 					if (!self.schemaDescription.hasOwnProperty(field)) {
-						throw new Meteor.Error("no-such-field-here--field-map", field);
+						throw new Meteor.Error('no-such-field-here--field-map', field);
 					}
 				});
 
-				var resultSet = [];
+				let resultSet = [];
 
-				leftData.forEach(function(item) {
-					var rightSelector = _.extend({}, selector);
-					joinFields.forEach(function(fieldsDesc) {
+				leftData.forEach((item) => {
+					const rightSelector = _.extend({}, selector);
+					joinFields.forEach((fieldsDesc) => {
 						// build selector
 						_.extend(rightSelector, _.object([
 							[fieldsDesc.rightField, item[fieldsDesc.leftField]]
 						]));
 					});
-					item = _.object(_.map(item, function(v, f) {
-						return [f, v];
-					}));
 
-					resultSet = resultSet.concat(self.find(rightSelector, options)
+					// what was this line here for anyway!? There's not need to copy
+					// item = _.object(_.map(item, (v, f) => [f, v]));
+
+					resultSet = resultSet.concat(self.find(rightSelector, _options)
 						.map(x => x._asPlainObject())
-						.map(function(rItem) {
-							excludeFields.forEach(function(field) {
+						.map(rItem => {
+							excludeFields.forEach(field => {
 								delete rItem[field];
 							});
 							if (includeFields !== null) {
@@ -392,56 +433,56 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 
 				return resultSet;
 			},
-			extendById: function extendById(data, options) {
+			extendById: function extendById(data, _options) {
 				check(data, Array);
-				options = _.extend({
-					idField: "_id",
+				_options = _.extend({
+					idField: '_id',
 					oneItemOnly: true,
 					newFieldName: null
-				}, options);
-				check(options, {
+				}, _options);
+				check(_options, {
 					dataField: String,
 					idField: String,
 					oneItemOnly: Boolean,
 					newFieldName: Match.OneOf(String, null)
 				});
-				var self = this;
+				const self = this;
 
-				data.forEach(function(item) {
-					if (item.hasOwnProperty(options.dataField)) {
-						var itm;
-						if (_.isArray(item[options.dataField])) {
-							if (options.idField === "_id") {
-								itm = item[options.dataField].map(id => self.findOne({
+				data.forEach(item => {
+					if (item.hasOwnProperty(_options.dataField)) {
+						let itm;
+						if (_.isArray(item[_options.dataField])) {
+							if (_options.idField === '_id') {
+								itm = item[_options.dataField].map(id => self.findOne({
 									_id: id
 								}));
 							} else {
-								itm = item[options.dataField].map(id => self.find(_.object([
-									[options.idField, id]
+								itm = item[_options.dataField].map(id => self.find(_.object([
+									[_options.idField, id]
 								])).fetch());
-								if (options.oneItemOnly) {
+								if (_options.oneItemOnly) {
 									itm = itm.map(x => x.shift());
 								}
 							}
 						} else {
-							if (options.dataField === "_id") {
+							if (_options.dataField === '_id') {
 								itm = self.findOne({
-									_id: item[options.dataField]
+									_id: item[_options.dataField]
 								});
 							} else {
 								itm = self.find(_.object([
-									[options.idField, item[options.dataField]]
+									[_options.idField, item[_options.dataField]]
 								])).fetch();
-								if (options.oneItemOnly) {
+								if (_options.oneItemOnly) {
 									itm = itm.shift();
 								}
 							}
 						}
 
-						if (options.newFieldName === null) {
-							item[options.dataField] = itm;
+						if (_options.newFieldName === null) {
+							item[_options.dataField] = itm;
 						} else {
-							item[options.newFieldName] = itm;
+							item[_options.newFieldName] = itm;
 						}
 					}
 				});
@@ -451,8 +492,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			fetch: function findAndFetch() {
 				return Mongo.Collection.prototype.find.apply(this.collection, _.toArray(arguments)).fetch();
 			},
+			// eslint-disable-next-line consistent-return
 			getItemProperty: function getItemProperty(_id, propName) {
-				var item = Mongo.Collection.prototype.findOne.call(this.collection, {
+				const item = Mongo.Collection.prototype.findOne.call(this.collection, {
 					_id: _id
 				});
 				if (!!item) {
@@ -469,16 +511,16 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				if (!sortDef) {
 					sortDef = {};
 				}
-				var count = 0;
-				console.log('**** LOG ALL (' + this.collection._name + ') ****');
+				let count = 0;
+				console.log(`**** LOG ALL (${this.collection._name}) ****`);
 				_.forEach(this.find(selector, {
 					fields: fields,
 					sort: sortDef
-				}).fetch(), function(v, k) {
-					console.log(k + ":", v);
+				}).fetch(), (v, k) => {
+					console.log(`${k}:`, v);
 					count += 1;
 				});
-				console.log('**** ' + count + ' items ****');
+				console.log(`**** ${count} items ****`);
 			}
 		}, {
 			mongoTransform: options.transform
@@ -496,8 +538,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			configurable: true
 		});
 
-		var prototypeExtension = _.isFunction(options.prototypeExtension) ? options.prototypeExtension(ConstructorFunction, collection) : options.prototypeExtension;
-		Object.getOwnPropertyNames(prototypeExtension).forEach(function(key) {
+		const prototypeExtension = _.isFunction(options.prototypeExtension) ? options.prototypeExtension(ConstructorFunction, collection) : options.prototypeExtension;
+		Object.getOwnPropertyNames(prototypeExtension).forEach(key => {
 			Object.defineProperty(ConstructorFunction.prototype, key, Object.getOwnPropertyDescriptor(prototypeExtension, key));
 		});
 	})();
@@ -521,8 +563,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		return this.schema._schema;
 	});
 	PackageUtilities.addPropertyGetter(ConstructorFunction, '_schemaDescription', function _getSchemaDescription() {
-		return _.object(_.map(this.schemaDescription, function(v, k) {
-			var kk = k;
+		return _.object(_.map(this.schemaDescription, (v, k) => {
+			let kk = k;
 			while (kk.indexOf('$') !== -1) {
 				kk = kk.replace('$', '*');
 			}
@@ -530,20 +572,20 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}));
 	});
 	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getTypeInfo', function getTypeInfo(fieldSpec) {
-		var match;
-		var fieldSpecSplit = fieldSpec.split(".");
-		_.forEach(ConstructorFunction._schemaDescription, function(desc, f) {
+		let match;
+		const fieldSpecSplit = fieldSpec.split('.');
+		_.forEach(ConstructorFunction._schemaDescription, (desc, f) => {
 			if (!!match) {
 				return;
 			}
-			var f_split = f.split('.');
-			if (f_split.length !== fieldSpecSplit.length) {
+			const fSplit = f.split('.');
+			if (fSplit.length !== fieldSpecSplit.length) {
 				return;
 			}
 
-			for (var k = 0; k < f_split.length; k++) {
+			for (let k = 0; k < fSplit.length; k++) {
 				// give wildcards a pass
-				if ((f_split[k] !== fieldSpecSplit[k]) && (f_split[k] !== "*")) {
+				if ((fSplit[k] !== fieldSpecSplit[k]) && (fSplit[k] !== '*')) {
 					return;
 				}
 			}
@@ -558,12 +600,12 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	//  - schema modification
 	//  - generate "checkable" (and "introspectable") schema
 	////////////////////////////////////////////////////////////
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getObjectWithDefaultValues', function getObjectWithDefaultValues(prefix = "", callConstructor = true) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getObjectWithDefaultValues', function getObjectWithDefaultValues(prefix = '', callConstructor = true) {
 		// TODO: address nested simple schemas in getObjectWithDefaultValues
 
-		var obj = {};
+		const obj = {};
 		// create schema limited to the prefix
-		var schemaDesc = _.object(
+		const schemaDesc = _.object(
 			_.map(
 				this.schemaDescription, (v, k) => [k, v]
 			)
@@ -571,20 +613,20 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			.map(x => [x[0].substr(prefix.length), x[1]])
 		);
 
-		_.forEach(schemaDesc, function(item, key) {
+		_.forEach(schemaDesc, (item, key) => {
 			if (key.indexOf('.') === -1) {
 				// Top Level only!!! Everything should be there.
-				if ((!item.optional) && (typeof item.defaultValue === "undefined")) {
+				if ((!item.optional) && (typeof item.defaultValue === 'undefined')) {
 					throw new Meteor.Error('default-value-not-found', key);
 				}
 
-				if (typeof item.defaultValue !== "undefined") {
+				if (typeof item.defaultValue !== 'undefined') {
 					obj[key] = _.isFunction(item.defaultValue) ? item.defaultValue() : item.defaultValue;
 				}
 			}
 		});
 
-		if ((prefix === "") && callConstructor) {
+		if ((prefix === '') && callConstructor) {
 			return new ConstructorFunction(obj);
 		} else {
 			return obj;
@@ -593,11 +635,11 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 
 
 	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getModifiedSchema', function getModifiedSchema(altSchemaElements, tag) {
-		var k;
-		var schemaDesc = this.schema._schema;
-		var selectedSchemaDesc = {};
+		let k;
+		const schemaDesc = this.schema._schema;
+		const selectedSchemaDesc = {};
 
-		if (typeof altSchemaElements === "undefined") {
+		if (typeof altSchemaElements === 'undefined') {
 			// No alt. schema elements
 			altSchemaElements = {};
 		}
@@ -605,7 +647,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		for (k in altSchemaElements) {
 			if (altSchemaElements.hasOwnProperty(k)) {
 				if (!schemaDesc.hasOwnProperty(k)) {
-					throw new Meteor.Error("alt-schema-entry-not-in-schema", k);
+					throw new Meteor.Error('alt-schema-entry-not-in-schema', k);
 				}
 			}
 		}
@@ -623,41 +665,41 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 
 	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'getCheckableSchema', function getCheckableSchema(prefix) {
 		// Gets checkable and dig-in-able schemas
-		var schemaDesc = this.schemaDescription;
-		if (typeof prefix === "undefined") {
-			prefix = "";
+		const schemaDesc = this.schemaDescription;
+		if (typeof prefix === 'undefined') {
+			prefix = '';
 		}
 
-		var schemaItems = _.map(schemaDesc, (v, k) => k);
+		const schemaItems = _.map(schemaDesc, (v, k) => k);
 		schemaItems.sort();
-		var obj = {};
+		const obj = {};
 
-		_.forEach(schemaItems, function(field) {
-			var bks = field.split('.');
-			var head = obj;
-			_.forEach(bks, function(f, idx) {
+		_.forEach(schemaItems, (field) => {
+			const bks = field.split('.');
+			let head = obj;
+			_.forEach(bks, (f, idx) => {
 				if (idx < bks.length - 1) {
 					// Traverse
-					head = head[(f === "$") ? 0 : f];
+					head = head[(f === '$') ? 0 : f];
 				} else {
 					// Write something for the first time
-					var eff_f = (head instanceof Array) ? 0 : f;
+					const effectiveField = (head instanceof Array) ? 0 : f;
 					if (schemaDesc[field].type === Array) {
-						head[eff_f] = [];
+						head[effectiveField] = [];
 					} else if (schemaDesc[field].type === Object) {
-						head[eff_f] = {};
+						head[effectiveField] = {};
 					} else {
-						head[eff_f] = schemaDesc[field].type;
+						head[effectiveField] = schemaDesc[field].type;
 					}
 				}
 			});
 		});
 
-		var ret = obj;
-		if (prefix !== "") {
-			prefix.split(".").forEach(function(f) {
+		let ret = obj;
+		if (prefix !== '') {
+			prefix.split('.').forEach((f) => {
 				if (!!ret) {
-					if ((f === "*") || (f === "$")) {
+					if ((f === '*') || (f === '$')) {
 						ret = ret[0];
 					} else {
 						ret = ret[f];
@@ -669,18 +711,18 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	});
 
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'filterWithTopLevelSchema', function filterWithTopLevelSchema(o, call_functions, altSchemaElements, tag) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'filterWithTopLevelSchema', function filterWithTopLevelSchema(o, callFunctions, altSchemaElements, tag) {
 		// If elements of o are functions, call without parameters
-		call_functions = !!call_functions;
+		callFunctions = !!callFunctions;
 
-		var selectedSchema = ConstructorFunction.getModifiedSchema(altSchemaElements, tag);
-		var selectedSchemaDesc = selectedSchema._schema;
-		var filteredObject = {};
-		for (var k in selectedSchemaDesc) {
-			if (call_functions && _.isFunction(o[k])) {
-				filteredObject[k] = o[k]();
+		const selectedSchema = ConstructorFunction.getModifiedSchema(altSchemaElements, tag);
+		const selectedSchemaDesc = selectedSchema._schema;
+		const filteredObject = {};
+		for (const field in selectedSchemaDesc) {
+			if (callFunctions && _.isFunction(o[field])) {
+				filteredObject[field] = o[field]();
 			} else {
-				filteredObject[k] = o[k];
+				filteredObject[field] = o[field];
 			}
 		}
 		return {
@@ -693,13 +735,13 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	////////////////////////////////////////////////////////////
 	// Publications
 	////////////////////////////////////////////////////////////
-	var __publicationList = {};
+	const __publicationList = {};
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'publications', __publicationList);
 	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makePublication', function makePublication(pubName, _options) {
 		if (!_options) {
 			_options = {};
 		}
-		if (typeof __publicationList[pubName] !== "undefined") {
+		if (typeof __publicationList[pubName] !== 'undefined') {
 			throw new Meteor.Error('publication-already-exists', pubName);
 		}
 		_options = _.extend({
@@ -724,7 +766,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			});
 
 			// rate limit
-			applyRateLimiting_SpecificInstance(pubName, 'subscription', _options, options);
+			applyRateLimitingToSpecificInstance(pubName, 'subscription', _options, options);
 		}
 		// Add default pubName
 		if (Object.keys(__publicationList).length === 0) {
@@ -734,16 +776,16 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	});
 
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makePublication_getById', function makePublication_getId(pubName, _options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makePublication_getById', function makePublicationGetId(pubName, _options) {
 		if (!_options) {
 			_options = {};
 		}
-		if (typeof __publicationList[pubName] !== "undefined") {
+		if (typeof __publicationList[pubName] !== 'undefined') {
 			throw new Meteor.Error('publication-already-exists', pubName);
 		}
 		_options = _.extend({
 			unblock: false,
-			idField: "_id",
+			idField: '_id',
 			selectOptions: {},
 			alternativeAuthFunction: null,
 			rateLimit: null,
@@ -766,7 +808,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			});
 
 			// rate limit
-			applyRateLimiting_SpecificInstance(pubName, 'subscription', _options, options);
+			applyRateLimitingToSpecificInstance(pubName, 'subscription', _options, options);
 		}
 		// Add default pubName by Id
 		if (_.map(__publicationList, x => x).length === 0) {
@@ -779,16 +821,16 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 	////////////////////////////////////////////////////////////
 	// Methods
 	////////////////////////////////////////////////////////////
-	var allMethods = {};
-	var addMethods = {};
-	var updateMethods = {};
-	var removeMethods = {};
+	const allMethods = {};
+	const addMethods = {};
+	const updateMethods = {};
+	const removeMethods = {};
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'allMethods', allMethods);
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'addMethods', addMethods);
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'updateMethods', updateMethods);
 	PackageUtilities.addMutablePropertyObject(ConstructorFunction, 'removeMethods', removeMethods);
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_add', function makeMethod_add(_options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_add', function makeMethodAdd(_options) {
 		if (!_options) {
 			_options = {};
 		}
@@ -796,7 +838,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			unblock: false,
 			entryPrefix: 'add',
 			withParams: false,
-			field: "",
+			field: '',
 			alternativeAuthFunction: null,
 			finishers: [],
 			serverOnly: false,
@@ -805,26 +847,26 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}, _options);
 		_options.field = _options.field.split('.')[0];
 
-		if (typeof _options.entryName === "undefined") {
-			_options.entryName = _options.entryPrefix + (_options.field === "" ? "" : "-" + _options.field);
+		if (typeof _options.entryName === 'undefined') {
+			_options.entryName = _options.entryPrefix + (_options.field === '' ? '' : `-${_options.field}`);
 		}
 
-		var methodName = (_options.field === '') ? options.methodPrefix + _options.entryPrefix : options.methodPrefix + _options.field + '/' + _options.entryPrefix;
-		if (typeof allMethods[_options.entryName] !== "undefined") {
-			throw new Meteor.Error('entry-name-already-exists', _options.entryName + ' for ' + methodName);
+		const methodName = (_options.field === '') ? `${options.methodPrefix}${_options.entryPrefix}` : `${options.methodPrefix}${_options.field}/${_options.entryPrefix}`;
+		if (typeof allMethods[_options.entryName] !== 'undefined') {
+			throw new Meteor.Error('entry-name-already-exists', `${_options.entryName} for ${methodName}`);
 		}
 		if (_.map(allMethods, x => x).indexOf(methodName) !== -1) {
 			throw new Meteor.Error('method-already-exists', methodName);
 		}
 
-		var schema = ConstructorFunction.getCheckableSchema();
+		const schema = ConstructorFunction.getCheckableSchema();
 		if ((_options.field !== '') && (!(schema[_options.field] instanceof Array))) {
 			throw new Meteor.Error('not-document-or-top-level-array', _options.field);
 		}
 
-		var method;
-		var _schema;
-		if (_options.field === "") {
+		let method;
+		let _schema;
+		if (_options.field === '') {
 			if (!_options.withParams) {
 				// add default document to collection
 				_schema = [];
@@ -832,7 +874,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 					if (_options.unblock) {
 						this.unblock();
 					}
-					var doc = ConstructorFunction.getObjectWithDefaultValues();
+					const doc = ConstructorFunction.getObjectWithDefaultValues();
 					return collection.insert(doc);
 				};
 			} else {
@@ -853,7 +895,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 					if (_options.unblock) {
 						this.unblock();
 					}
-					var subDoc = ConstructorFunction.getObjectWithDefaultValues(_options.field + '.$.');
+					const subDoc = ConstructorFunction.getObjectWithDefaultValues(`${_options.field}.$.`);
 					return collection.update(id, {
 						$push: _.object([
 							[_options.field, subDoc]
@@ -894,14 +936,14 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		return _options.entryName;
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_remove', function makeMethod_remove(_options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_remove', function makeMethodRemove(_options) {
 		if (!_options) {
 			_options = {};
 		}
 		_options = _.extend({
 			unblock: false,
 			entryPrefix: 'remove',
-			field: "",
+			field: '',
 			alternativeAuthFunction: null,
 			finishers: [],
 			serverOnly: false,
@@ -910,21 +952,21 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		}, _options);
 		_options.field = _options.field.split('.')[0];
 
-		if (typeof _options.entryName === "undefined") {
-			_options.entryName = _options.entryPrefix + (_options.field === "" ? "" : "-" + _options.field);
+		if (typeof _options.entryName === 'undefined') {
+			_options.entryName = _options.entryPrefix + (_options.field === '' ? '' : `-${_options.field}`);
 		}
 
-		var methodName = options.methodPrefix + _options.entryName;
-		if (typeof allMethods[_options.entryName] !== "undefined") {
-			throw new Meteor.Error('entry-name-already-exists', _options.entryName + ' for ' + methodName);
+		const methodName = options.methodPrefix + _options.entryName;
+		if (typeof allMethods[_options.entryName] !== 'undefined') {
+			throw new Meteor.Error('entry-name-already-exists', `${_options.entryName} for ${methodName}`);
 		}
 		if (_.map(allMethods, x => x).indexOf(methodName) !== -1) {
 			throw new Meteor.Error('method-already-exists', methodName);
 		}
 
-		var method;
-		var schema;
-		if (_options.field === "") {
+		let method;
+		let schema;
+		if (_options.field === '') {
 			// remove document
 			schema = [String];
 			method = function(id) {
@@ -936,17 +978,18 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		} else if (_.isArray(ConstructorFunction.getCheckableSchema()[_options.field])) {
 			// remove array entry
 			schema = [String, Match.isNonNegativeInteger];
+			// eslint-disable-next-line consistent-return
 			method = function(id, idx) {
 				if (_options.unblock) {
 					this.unblock();
 				}
-				var subDoc = collection.findOne(id, {
+				const subDoc = collection.findOne(id, {
 					fields: _.object([
 						[_options.field, 1]
 					])
 				});
 				if (!!subDoc) {
-					var arr = subDoc[_options.field];
+					const arr = subDoc[_options.field];
 					if (arr.length > idx) {
 						arr.splice(idx, 1);
 						return collection.update(id, {
@@ -966,7 +1009,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				}
 				return collection.update(id, {
 					$unset: _.object([
-						[_options.field, ""]
+						[_options.field, '']
 					])
 				});
 			};
@@ -990,7 +1033,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		return _options.entryName;
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethods_updater', function makeMethods_updater(_options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethod_updater', function makeMethodUpdater(_options) {
 		if (!_options) {
 			_options = {};
 		}
@@ -1006,19 +1049,23 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			// rateLimitInterval: null,
 		}, _options);
 
-		if (typeof _options.entryName === "undefined") {
-			_options.entryName = _options.entryPrefix + (_options.field === "" ? "" : "-" + _options.field);
+		if (typeof _options.entryName === 'undefined') {
+			_options.entryName = _options.entryPrefix + (_options.field === '' ? '' : `-${_options.field}`);
 		}
 
-		var methodName = options.methodPrefix + _options.entryPrefix + "-" + _options.field;
-		if (_options.field === "") {
+		const methodName = `${options.methodPrefix}${_options.entryPrefix}-${_options.field}`;
+		if (_options.field === '') {
 			throw new Meteor.Error('field-not-specified');
 		}
-		if (typeof allMethods[_options.entryName] !== "undefined") {
-			throw new Meteor.Error('method-for-field-already-exists', _options.field + ' for ' + methodName);
+		if (typeof allMethods[_options.entryName] !== 'undefined') {
+			throw new Meteor.Error('method-for-field-already-exists', `${_options.field} for ${methodName}`);
 		}
 		if (_.map(allMethods, x => x).indexOf(methodName) !== -1) {
 			throw new Meteor.Error('method-already-exists', methodName);
+		}
+
+		if (_debugMode) {
+			console.log(`[CollectionTools|create-updateMethod|${_options.field}]`, _options.type);
 		}
 
 		CollectionTools.createMethod({
@@ -1030,16 +1077,19 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				if (_options.unblock) {
 					this.unblock();
 				}
-				var fs = _options.field.split('.');
-				var argIdx = 0;
-				fs.forEach(function(f, idx) {
-					if (f === "*") {
+				if (_debugMode) {
+					console.log(`[CollectionTools|updateMethod|${_options.field}] id: ${id}; value:`, value, '; args:', args);
+				}
+				const fs = _options.field.split('.');
+				let argIdx = 0;
+				fs.forEach((f, idx) => {
+					if (f === '*') {
 						fs[idx] = args[argIdx];
 						argIdx++;
 					}
 				});
-				var thisField = fs.join('.');
-				var setter = {
+				const thisField = fs.join('.');
+				const setter = {
 					$set: _.object([
 						[thisField, value]
 					])
@@ -1058,7 +1108,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		return methodName;
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethods_generalUpdater', function makeMethods_generalUpdater(_options) {
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeMethods_generalUpdater', function makeMethodsGeneralUpdater(_options) {
 		if (!_options) {
 			_options = {};
 		}
@@ -1072,9 +1122,9 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			// rateLimitInterval: null,
 		}, _options);
 
-		var methodName = options.methodPrefix + _options.entryName;
-		if (typeof allMethods[_options.entryName] !== "undefined") {
-			throw new Meteor.Error('method-for-field-already-exists', _options.field + ' for ' + methodName);
+		const methodName = options.methodPrefix + _options.entryName;
+		if (typeof allMethods[_options.entryName] !== 'undefined') {
+			throw new Meteor.Error('method-for-field-already-exists', `${_options.field} for ${methodName}`);
 		}
 		if (_.map(allMethods, x => x).indexOf(methodName) !== -1) {
 			throw new Meteor.Error('method-already-exists', methodName);
@@ -1089,8 +1139,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				if (_options.unblock) {
 					this.unblock();
 				}
-				_.forEach(updates, function(v, f) {
-					var typeInfo = ConstructorFunction.getTypeInfo(f);
+				_.forEach(updates, (v, f) => {
+					const typeInfo = ConstructorFunction.getTypeInfo(f);
 					if (!typeInfo) {
 						throw new Meteor.Error('invalid-field', f);
 					}
@@ -1111,10 +1161,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		return methodName;
 	});
 
-	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeGenericMethod_updaters', function makeGenericMethod_updaters(_options) {
-		if (!_options) {
-			_options = {};
-		}
+	PackageUtilities.addImmutablePropertyFunction(ConstructorFunction, 'makeGenericMethod_updaters', function makeGenericMethodUpdaters(_options = {}) {
 		_options = _.extend({
 			unblock: false,
 			entryPrefix: 'update-gen',
@@ -1127,40 +1174,83 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			considerFieldsByFieldPrefix: null,
 			excludeFieldsByName: [],
 			excludeFieldsByFieldPrefix: [],
+			primitiveTypesOnly: false,
+			primitiveTypesIncludesDate: false,
 		}, _options);
 
-		var _schemaDesc = ConstructorFunction._schemaDescription;
-		_.forEach(_schemaDesc, function(v, f) {
-			var considerField = true;
+		const _schemaDesc = ConstructorFunction._schemaDescription;
+
+		if (_debugMode) {
+			console.log('[CollectionTools|makeGenericMethod_updaters] _options:', _options);
+		}
+
+		_.forEach(_schemaDesc, function createRelevantMeteorMethods(v, f) {
+			// if (_debugMode) {
+			// 	console.log(`[CollectionTools|makeGenericMethod_updaters] field: ${f}`);
+			// }
+
+			let considerField = true;
 			if (_.isArray(_options.considerFieldsByName) || _.isArray(_options.considerFieldsByFieldPrefix)) {
-				considerField = (_options.considerFieldsByName || []).indexOf(f) === -1;
-				_.forEach((_options.considerFieldsByFieldPrefix || []), function(inclusionPrefix) {
+				considerField = (_options.considerFieldsByName || []).indexOf(f) > -1;
+				_.forEach(_options.considerFieldsByFieldPrefix || [], function testForInclusion(inclusionPrefix) {
 					if (inclusionPrefix === f.substr(0, inclusionPrefix.length)) {
-						considerField = false;
+						considerField = true;
 					}
 				});
 			}
 
 			if (considerField) {
-				var createMethod = _options.excludeFieldsByName.indexOf(f) === -1;
-				_.forEach(_options.excludeFieldsByFieldPrefix, function(exclusionPrefix) {
+				if (_debugMode) {
+					// console.log('[CollectionTools|makeGenericMethod_updaters] considering field:', f);
+				}
+
+				if (_options.excludeFieldsByName.indexOf(f) > -1) {
+					if (_debugMode) {
+						// console.log('[CollectionTools|makeGenericMethod_updaters] excluding field by name:', f);
+					}
+					return;
+				}
+				let createMethod = true;
+				_.forEach(_options.excludeFieldsByFieldPrefix, function testForExclusion(exclusionPrefix) {
 					if (exclusionPrefix === f.substr(0, exclusionPrefix.length)) {
+						if (_debugMode) {
+							// console.log('[CollectionTools|makeGenericMethod_updaters] excluding field by prefix:', f);
+						}
 						createMethod = false;
 					}
 				});
+				if (!createMethod) {
+					return;
+				}
 
-				if (createMethod) {
-					if (f !== "_id") {
-						ConstructorFunction.makeMethods_updater({
-							unblock: _options.unblock,
-							field: f,
-							type: ConstructorFunction.getCheckableSchema(f),
-							entryPrefix: _options.entryPrefix,
-							alternativeAuthFunction: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
-							finishers: _options.finishers,
-							serverOnly: _options.serverOnly,
-						});
+				if (_options.primitiveTypesOnly) {
+					const primitivesList = [String, Boolean, Number];
+					if (_options.primitiveTypesIncludesDate) {
+						primitivesList.push(Date);
 					}
+					if (primitivesList.indexOf(v.type) === -1) {
+						if (_debugMode) {
+							// console.log('[CollectionTools|makeGenericMethod_updaters] excluding field (not primitive):', f);
+						}
+						return;
+					}
+				}
+
+				if (f === '_id') {
+					if (_debugMode) {
+						console.log('[CollectionTools|makeGenericMethod_updaters] excluding _id');
+					}
+					return;
+				} else {
+					ConstructorFunction.makeMethod_updater({
+						unblock: _options.unblock,
+						field: f,
+						type: ConstructorFunction.getCheckableSchema(f),
+						entryPrefix: _options.entryPrefix,
+						alternativeAuthFunction: _.isFunction(_options.alternativeAuthFunction) ? _options.alternativeAuthFunction : options.globalAuthFunction,
+						finishers: _options.finishers,
+						serverOnly: _options.serverOnly,
+					});
 				}
 			}
 		});
@@ -1168,3 +1258,5 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 
 	return ConstructorFunction;
 });
+
+export { CollectionTools };

@@ -283,7 +283,7 @@ ConstructorFunction = CollectionTools.build({
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
 
- - `makeMethods_updater(options)`: creates generic field-specific updaters with signature `function(id, value, ...args)`
+ - `makeMethod_updater(options)`: creates generic field-specific updaters with signature `function(id, value, ...args)`
    * `unblock`: whether to call `this.unblock()` (default: `false`)
    * `entryName`: entry name (default: `'general-update'`)
    * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
@@ -291,7 +291,7 @@ ConstructorFunction = CollectionTools.build({
    * `serverOnly`: define only on server if `true` (default: `false`)
    * `rateLimit`: rate limiting count (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
    * `rateLimitInterval`: rate limiting interval (set to 0 to not apply rate limiting; leave unset to use "type-level" defaults)
- - `makeGenericMethod_updaters(options)`: creates top-level generic field-specific updaters with signature `function(id, value, ...args)` (see `makeMethods_updater` above) with the following options
+ - `makeGenericMethod_updaters(options)`: creates top-level generic field-specific updaters with signature `function(id, value, ...args)` (see `makeMethod_updater` above) with the following options
    * `unblock`: whether to call `this.unblock()` (default: `false`)
    * `entryPrefix`: prefix for methods
    * `alternativeAuthFunction`: authentication function mapping user id (`this.userId` or `Meteor.userId()`) and the document id to a `Boolean` indicating whether the user is authorized (default: `(userId, docId) => true`) this supersedes the global authentication function
@@ -304,6 +304,8 @@ ConstructorFunction = CollectionTools.build({
    * If neither `considerFieldsByName` nor `considerFieldsByFieldPrefix` are specified, then all fields are considered
    * `excludeFieldsByName`: fields to exclude (e.g.: `"friends.$"`)
    * `excludeFieldsByFieldPrefix`: fields to exclude (e.g.: `"friends.$"` excludes fields like `"friends.$.name"` and `"friends.$.particulars.name"`)
+   * `primitiveTypesOnly`: include only primitive types (`String`, `Boolean`, `Number`) (default: `false`)
+   * `primitiveTypesIncludesDate`: include `Date` among primitive types (default: `false`)
  - `makeMethods_generalUpdater(options)`: creates a monolithic updater for a document with the signature `function(id, updates)`
    * `unblock`: whether to call `this.unblock()` (default: `false`)
    * `entryName`: entry name (default: `'general-update'`)
