@@ -284,7 +284,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		defaultRateLimit: 10,
 		defaultRateLimitInterval: 1000,
 	}, options, false);
-	if (options.collectionName === '') {
+	if (!options.collectionName) {
 		options.collectionName = null;
 	}
 	if (options.methodPrefix === '') {
@@ -306,7 +306,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		let fn;
 		let s = 'fn = function ';
 		let constructorName = '';
-		Array.prototype.forEach.call(name, function nameConstructorWithValidCharacters(c, idx) {
+		Array.prototype.forEach.call(name || '', function nameConstructorWithValidCharacters(c, idx) {
 			// eslint-disable-next-line yoda
 			if ((c === '_') || (('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || ((idx !== 0) && ('0' <= c) && (c <= '9'))) {
 				s += c;
@@ -339,7 +339,7 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 		defineMutationMethods: !options.setRestrictiveAllowDenyDefaults
 	});
 	PackageUtilities.addImmutablePropertyValue(ConstructorFunction, 'collection', collection);
-	if (!!options.setRestrictiveAllowDenyDefaults) {
+	if (!!options.setRestrictiveAllowDenyDefaults && !!options.collectionName) {
 		collection.allow({
 			insert: () => false,
 			update: () => false,
@@ -368,138 +368,8 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 			// jshint evil: false
 			return [fnName, fn];
 		})), {
-			innerJoin: function innerJoin(leftData, joinFields, mapRightFields = {}, selector = {}, _options = {}, excludeFields = ['_id'], includeFields = null) {
-				check(leftData, Array);
-
-				check(joinFields, [{
-					leftField: String,
-					rightField: String,
-				}]);
-
-				check(mapRightFields, Object);
-
-				check(selector, Object);
-				check(_options, Object);
-
-				check(excludeFields, [String]);
-				check(includeFields, Match.OneOf(null, [String]));
-
-				const self = this;
-
-				joinFields.forEach(function checkFields(fieldsDesc) {
-					if (!self.schemaDescription.hasOwnProperty(fieldsDesc.rightField)) {
-						throw new Meteor.Error('no-such-field-here--join-fields', fieldsDesc.rightField);
-					}
-				});
-
-				_.forEach(mapRightFields, function checkFieldMapItem(mappedFieldName, field) {
-					if (!self.schemaDescription.hasOwnProperty(field)) {
-						throw new Meteor.Error('no-such-field-here--field-map', field);
-					}
-				});
-
-				let resultSet = [];
-
-				leftData.forEach((item) => {
-					const rightSelector = _.extend({}, selector);
-					joinFields.forEach((fieldsDesc) => {
-						// build selector
-						_.extend(rightSelector, _.object([
-							[fieldsDesc.rightField, item[fieldsDesc.leftField]]
-						]));
-					});
-
-					// what was this line here for anyway!? There's not need to copy
-					// item = _.object(_.map(item, (v, f) => [f, v]));
-
-					resultSet = resultSet.concat(self.find(rightSelector, _options)
-						.map(x => x._asPlainObject())
-						.map(rItem => {
-							excludeFields.forEach(field => {
-								delete rItem[field];
-							});
-							if (includeFields !== null) {
-								rItem = _.object(includeFields
-									.filter(f => rItem.hasOwnProperty(f))
-									.map(f => [mapRightFields.hasOwnProperty(f) ? mapRightFields[f] : f, rItem[f]])
-								);
-							} else {
-								rItem = _.object(_.map(rItem, (v, f) => [mapRightFields.hasOwnProperty(f) ? mapRightFields[f] : f, v]));
-							}
-							return _.extend({}, item, rItem);
-						})
-					);
-				});
-
-				return resultSet;
-			},
-			extendById: function extendById(data, _options) {
-				check(data, Array);
-				_options = _.extend({
-					idField: '_id',
-					oneItemOnly: true,
-					newFieldName: null
-				}, _options);
-				check(_options, {
-					dataField: String,
-					idField: String,
-					oneItemOnly: Boolean,
-					newFieldName: Match.OneOf(String, null)
-				});
-				const self = this;
-
-				data.forEach(item => {
-					if (item.hasOwnProperty(_options.dataField)) {
-						let itm;
-						if (_.isArray(item[_options.dataField])) {
-							if (_options.idField === '_id') {
-								itm = item[_options.dataField].map(id => self.findOne({
-									_id: id
-								}));
-							} else {
-								itm = item[_options.dataField].map(id => self.find(_.object([
-									[_options.idField, id]
-								])).fetch());
-								if (_options.oneItemOnly) {
-									itm = itm.map(x => x.shift());
-								}
-							}
-						} else {
-							if (_options.dataField === '_id') {
-								itm = self.findOne({
-									_id: item[_options.dataField]
-								});
-							} else {
-								itm = self.find(_.object([
-									[_options.idField, item[_options.dataField]]
-								])).fetch();
-								if (_options.oneItemOnly) {
-									itm = itm.shift();
-								}
-							}
-						}
-
-						if (_options.newFieldName === null) {
-							item[_options.dataField] = itm;
-						} else {
-							item[_options.newFieldName] = itm;
-						}
-					}
-				});
-				return data;
-			}
-		}, {
 			fetch: function findAndFetch() {
 				return Mongo.Collection.prototype.find.apply(this.collection, _.toArray(arguments)).fetch();
-			},
-			// eslint-disable-next-line consistent-return
-			getItemProperty: function getItemProperty(_id, propName) {
-				const item = Mongo.Collection.prototype.findOne.call(this.collection, {
-					_id: _id
-				});
-				if (!!item) {
-					return item[propName];
-				}
 			},
 			__logAll__: function __logAll__(selector, fields, sortDef) {
 				if (!selector) {
@@ -511,16 +381,17 @@ PackageUtilities.addImmutablePropertyFunction(CollectionTools, 'build', function
 				if (!sortDef) {
 					sortDef = {};
 				}
-				let count = 0;
-				console.log(`**** LOG ALL (${this.collection._name}) ****`);
-				_.forEach(this.find(selector, {
+				const allItems = this.find(selector, {
 					fields: fields,
 					sort: sortDef
-				}).fetch(), (v, k) => {
-					console.log(`${k}:`, v);
-					count += 1;
+				}).fetch();
+				console.log(`**** LOG ALL (${this.collection._name}) ****`);
+				_.forEach(allItems, (v, k) => {
+					const _id = v._id;
+					delete v._id;
+					console.log(`[${k}|${_id}]`, v);
 				});
-				console.log(`**** ${count} items ****`);
+				console.log(`**** ${allItems.length} items ****`);
 			}
 		}, {
 			mongoTransform: options.transform
